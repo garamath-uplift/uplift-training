@@ -1,0 +1,1694 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample Module Title</title>
+<!-- Module settings, read by tools/module.ps1 (check, preview, package). "identifier" must never change between
+     versions, or the LMS treats the upload as a new course. "interactions": true records each check answer in the
+     LMS (question-level answers); leave it false unless someone will use those reports. -->
+<script type="application/json" id="uplift-module">
+{"title": "Sample Module Title", "identifier": "uplift-sample-module", "version": "1.0", "language": "en-US", "interactions": false}
+</script>
+<!--
+  Uplift Education staff training: MODULE STARTER TEMPLATE (from Foundations v3.3)
+
+  HOW TO USE
+  - Copy this folder to modules/<module-name>/sources/<source-name>/ (index.html + assets/). Don't edit the template
+    itself to build a module. See templates/module-starter/README.md for the full guide and component catalog.
+  - Replace every [[PLACEHOLDER: ...]] with real content. Search for "[[PLACEHOLDER" before packaging: none may be left.
+    (In DEV mode, the script also warns in the browser console if any are left.)
+  - Change MODULE_KEY in the script to the module's name, so this module's browser settings don't mix with others.
+  - Update <title>, the course name in the top bar, the Resources links and the header comment.
+  - All names, scenarios and data must be fictional. No real student or staff names, photos or records.
+
+  STRUCTURE
+  - One slide at a time (<section class="slide">), with Previous/Next and a collapsible menu built from the slides.
+  - data-section on each slide = the SECTIONS id it belongs to. data-title = its name in the menu.
+  - data-gate keeps Next locked until the slide's activity is done: "sort", "practice" or "check".
+    Next also stays locked until every .fold box and details.reveal on the slide has been opened.
+    Selecting a locked Next makes the hint bold; selecting it again outlines what's left to do.
+  - Section checks: one question per slide (form.check, data-check = the section id, data-pass = how many right to pass).
+    The last question shows the result, with Try again until passed.
+
+  COLOR TOKENS (two layers, see :root)
+  - CORE tokens are the same in every Uplift module (text, surfaces, right/wrong colors, sizes). Don't theme them.
+  - THEME tokens come from the module's design brief (documentation/02-design-questionnaire.md). The defaults are
+    the Uplift default look from Foundations. Every pair must pass WCAG 2.1 AA contrast before it ships.
+
+  DEV MODE
+  - Set DEV = true at the top of the script to test: every slide opens from the menu, Next is never locked and
+    animations are skipped. A "Dev mode" badge shows in the top bar. Set it back to false before packaging.
+
+  TRACKING (SCORM 2004 4th Edition)
+  - The tracking code is templates/core/scorm-runtime.js. tools/module.ps1 adds it when it builds a preview or a
+    package, so it isn't in this file. Opened directly, the module works but reports nothing.
+  - "tools/module.ps1 preview <module>" adds a pretend LMS with a panel showing what would be reported.
+  - Each [data-jalon] marker is a milestone, reached from script only (reachSection / passCheck), never by scrolling.
+    All reached = cmi.completion_status "completed". The runtime saves reached milestones in cmi.suspend_data.
+  - A section counts once its last slide is shown, or, if it has a check, once the check is passed and the learner
+    moves on. Each check counts once it's passed.
+  - Each passed check adds its correct answers to window.SCORM2004.score(raw, 0, CHECK_TOTAL). Once every check is
+    passed, the script sets cmi.success_status "passed" itself. Package WITHOUT a mastery score, so nothing ever
+    sets "failed".
+  All names and scenarios in this module are fictional.
+-->
+<style>
+  :root {
+    /* ===== CORE tokens: the same in every Uplift module. Don't change these for a theme. ===== */
+    --ink: #1a1a1a;          /* body text */
+    --muted: #4b5563;        /* secondary text */
+    --bg: #ffffff;           /* page and card background */
+    --surface: #f2f6fa;      /* cards, menu, quiet panels */
+    --line: #d6e2ee;         /* borders */
+    --good: #166534;         /* right answer */
+    --good-tint: #e8f5ec;
+    --bad: #9f1239;          /* wrong answer, locked-Next hint */
+    --bad-tint: #fdecef;
+    --radius: 14px;
+    --max: 1140px;           /* widest slide */
+    --top-h: 62px;           /* top bar height (shrinks on short screens) */
+    --font: "Segoe UI", Calibri, system-ui, -apple-system, Roboto, Arial, sans-serif;
+
+    /* ===== THEME tokens: set from the module's design brief. Defaults = the Uplift default look. =====
+       Check every pair for WCAG AA contrast (4.5:1 text, 3:1 large text and non-text) before shipping. */
+    --brand: #0d2b45;        /* top bar, title and section banners, headings on light backgrounds */
+    --brand-2: #163a5c;      /* top-bar hover, progress track, tip strip */
+    --on-brand: #ffffff;     /* text and icons on --brand and --brand-2 */
+    --primary: #1b6fb5;      /* buttons, selected states, icon circles (white text on it) */
+    --on-primary: #ffffff;   /* text and icons on --primary (must be >= 4.5:1 on it) */
+    --primary-dark: #155a94; /* links, labels, button hover (text on light backgrounds) */
+    --primary-tint: #e6f0fa; /* hover and selected backgrounds, notices */
+    --accent: #ffc000;       /* progress fill, highlights on --brand only (never text on light backgrounds) */
+    --accent-tint: #fff4cc;  /* callouts */
+    --accent-2: #c2410c;     /* second accent: tags, decorative bars */
+    --focus: #155a94;        /* keyboard focus ring (with a white halo, so it shows on light and dark) */
+    --stage-bg: var(--bg);   /* slide backdrop; a theme may set a color, gradient or image (keep text readable) */
+  }
+  * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+  /* Dev mode (DEV in the script): no CSS animations, and a badge in the top bar so it can't ship unnoticed. */
+  html.dev *, html.dev *::before, html.dev *::after { transition: none !important; animation: none !important; }
+  .dev-badge { font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #1a1a1a; background: #ffc000; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.6 var(--font); }
+  a { color: var(--primary-dark); text-underline-offset: 2px; }
+  a:hover { color: var(--brand); }
+  /* Focus ring: a dark ring between two white halos. The dark ring shows on light backgrounds and the white halo on
+     dark ones (WCAG 1.4.11 and 2.4.7). Don't replace it with a single light color. */
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 7px #fff; border-radius: 4px; }
+  [tabindex="-1"]:focus { outline: none; box-shadow: none; }
+  .skip { position: absolute; left: -999px; top: 0; background: var(--bg); color: var(--ink); padding: 8px 14px; z-index: 100; font-weight: 600; border: 2px solid var(--focus); }
+  .skip:focus { left: 8px; top: 8px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- Top bar ---------- */
+  .topbar { position: sticky; top: 0; z-index: 10; background: var(--brand); color: var(--on-brand); box-shadow: 0 2px 12px rgba(16, 24, 40, .12); }
+  .topbar-inner { height: calc(var(--top-h) - 6px); padding: 0 16px; display: flex; align-items: center; gap: 16px; }
+  .topbar img { height: 26px; width: auto; display: block; }
+  .topbar .course { font-size: 15px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .pct { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .progress { height: 6px; background: var(--brand-2); }
+  .progress > div { height: 100%; width: 0; background: var(--accent); border-radius: 0 4px 4px 0; transition: width .4s ease; }
+  .menu-toggle, .drop-toggle { flex: none; display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 15px; font-weight: 600; color: var(--on-brand); background: transparent; border: 2px solid var(--on-brand); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+  .drop-toggle { gap: 6px; font-size: 14px; padding: 4px 10px; }
+  .menu-toggle:hover, .drop-toggle:hover, .drop-toggle[aria-expanded="true"] { background: var(--brand-2); }
+  .menu-toggle svg, .drop-toggle svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* Resources and Settings: two top-bar dropdowns (disclosure panels). */
+  .drop { position: relative; flex: none; }
+  @media (max-width: 760px) { .drop-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
+  .drop-panel { position: absolute; z-index: 30; right: 0; top: calc(100% + 10px); width: 300px; max-width: calc(100vw - 32px); max-height: calc(var(--vh, 100vh) - 90px); overflow-y: auto; padding: 6px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(16, 24, 40, .25); }
+  .set-item { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; font-size: 15px; font-weight: 600; text-align: left; color: var(--brand); background: none; border: 0; border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+  .set-item:hover { background: var(--surface); }
+  .set-item svg { flex: none; width: 18px; height: 18px; stroke: var(--primary-dark); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .set-item .spk { fill: var(--primary-dark); }
+  .sound-toggle[aria-pressed="true"] .off, .sound-toggle[aria-pressed="false"] .on { display: none; }
+  /* The On/Off (Shown/Hidden) word on the right; the button's pressed state says the same to screen readers. */
+  .set-state { margin-left: auto; font-size: 13px; font-weight: 700; padding: 1px 10px; border-radius: 999px; background: var(--surface); color: var(--muted); }
+  [aria-pressed="true"] > .set-state { background: var(--primary-tint); color: var(--primary-dark); }
+  .sound-toggle .set-state::before { content: "Off"; }
+  .sound-toggle[aria-pressed="true"] .set-state::before { content: "On"; }
+  #tips-toggle .set-state::before { content: "Hidden"; }
+  #tips-toggle[aria-pressed="true"] .set-state::before { content: "Shown"; }
+  .drop-links { list-style: none; margin: 0; }
+  .drop-links a { display: block; padding: 10px 12px; border-radius: 8px; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--primary-dark); }
+  .drop-links a:hover { background: var(--surface); }
+  /* Phones: the course name goes, Menu becomes icon-only (its name stays for screen readers) and spacing tightens,
+     so the top bar fits at 390px. At 320px (WCAG reflow), the logo goes too. (Foundations v3.3 overflows here.) */
+  @media (max-width: 520px) {
+    .topbar .course { display: none; }
+    .topbar-inner { justify-content: space-between; gap: 8px; padding: 0 10px; }
+    .menu-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .menu-toggle, .drop-toggle { padding: 5px 8px; }
+  }
+  @media (max-width: 360px) { .topbar img { display: none; } }
+
+  /* Tip strip: part of the sticky top bar. Script keeps --tip-h at its height (--bar-h = top bar + tip strip). */
+  :root { --tip-h: 0px; --bar-h: calc(var(--top-h) + var(--tip-h)); }
+  .tip { background: var(--brand-2); border-top: 1px solid rgba(255, 255, 255, .12); font-size: 14px; line-height: 1.45; color: var(--on-brand); }
+  .tip-row { display: flex; align-items: center; gap: 6px 12px; padding: 7px 16px; }
+  .tip-row p { flex: 1; margin: 0; }
+  .tip-link { font: inherit; font-weight: 700; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .tip-link::after { content: " \25BE"; text-decoration: none; display: inline-block; }
+  .tip-link[aria-expanded="true"]::after { content: " \25B4"; }
+  .tip-link:hover { color: var(--on-brand); }
+  .tip-hide { flex: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--on-brand); background: transparent; border: 1px solid var(--on-brand); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .tip-hide:hover { background: var(--brand); }
+  .tip-steps { padding: 2px 16px 12px; }
+  .tip-steps h3 { margin: 0 0 4px; font-size: 14px; color: var(--on-brand); }
+  .tip-steps ol { margin: 0; padding-left: 22px; }
+  .tip-steps li { margin: 0 0 3px; }
+  .tip kbd { font: inherit; font-size: 13px; font-weight: 700; padding: 0 5px; border: 1px solid var(--on-brand); border-bottom-width: 2px; border-radius: 4px; }
+
+  /* ---------- Shell: menu + slide stage ---------- */
+  .shell { display: flex; align-items: flex-start; }
+  .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: calc(100vh - var(--bar-h)); background: var(--stage-bg); }
+  main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 32px 24px 48px; container-type: inline-size; overflow-wrap: anywhere; }
+
+  /* ---------- Menu ---------- */
+  .sidebar { flex: none; width: 300px; position: sticky; top: var(--bar-h); height: calc(100vh - var(--bar-h)); overflow-y: auto; background: var(--surface); border-right: 1px solid var(--line); }
+  body[data-menu="closed"] .sidebar { display: none; }
+  .menu-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 0; }
+  .menu-title { margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .menu-close { display: none; font: inherit; font-size: 15px; font-weight: 600; color: var(--primary-dark); background: var(--bg); border: 2px solid var(--primary); border-radius: 8px; padding: 4px 12px; cursor: pointer; }
+  .menu-list { list-style: none; margin: 0; padding: 0 12px 24px; }
+  .menu-sec-title { display: flex; gap: 8px; align-items: center; font-size: 15px; font-weight: 700; color: var(--brand); margin: 18px 8px 6px; }
+  .menu-sec-title .num { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--primary-tint); color: var(--primary-dark); font-size: 13px; }
+  .menu-sec.done .menu-sec-title .num { background: var(--good); color: #fff; }
+  .menu-sec .tick { display: none; margin-left: auto; color: var(--good); font-size: 14px; }
+  .menu-sec.done .tick { display: inline; }
+  .menu-slides { list-style: none; margin: 0; padding: 0; }
+  .menu-item { display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; font: inherit; font-size: 15px; line-height: 1.35; padding: 7px 12px 7px 40px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; }
+  .menu-item:hover:not(:disabled) { background: var(--primary-tint); }
+  .menu-item[aria-current] { position: relative; background: var(--bg); color: var(--primary-dark); font-weight: 700; }
+  .menu-item[aria-current]::before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 4px; border-radius: 4px; background: var(--primary); }
+  .menu-item:disabled { color: var(--muted); cursor: not-allowed; }
+  .menu-item .mi-title { flex: 1; }
+  .menu-item svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  .scrim { display: none; position: fixed; inset: 0; background: rgba(16, 24, 40, .45); z-index: 25; }
+  @media (max-width: 900px) {
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; height: auto; width: min(320px, 88vw); z-index: 30; box-shadow: 0 0 40px rgba(16, 24, 40, .35); }
+    .menu-close { display: inline-block; }
+    body[data-menu="open"] .scrim { display: block; }
+  }
+
+  /* ---------- Previous / Next bar ---------- */
+  .navbar { position: sticky; bottom: 0; z-index: 5; background: var(--bg); border-top: 1px solid var(--line); box-shadow: 0 -4px 16px rgba(16, 24, 40, .06); }
+  .navbar-inner { max-width: var(--max); margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .counter { margin: 0 auto 0 0; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .nav-hint { margin: 0; font-size: 15px; color: var(--muted); }
+  .nav-hint.flash { color: var(--bad); font-weight: 700; }
+  /* Next selected again with something left to do: outline each place the learner still needs to act. */
+  .needs-action { outline: 3px dashed var(--bad); outline-offset: 4px; animation: nudge 1s ease-in-out 2; }
+  @keyframes nudge { 50% { outline-offset: 9px; } }
+  .navbar .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .navbar .btn[hidden] { display: none; }
+  .navbar .btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  @media (max-width: 640px) { .nav-hint { order: -1; flex-basis: 100%; } main { padding: 24px 16px 40px; } .navbar-inner { padding: 10px 16px; } }
+  /* Short screens and high zoom: let the bars scroll away instead of covering the slide. */
+  @media (max-height: 520px) {
+    .topbar, .navbar { position: static; }
+    .sidebar { top: 0; height: 100vh; }
+  }
+
+  /* ---------- Slides and type ---------- */
+  .slide[hidden] { display: none !important; }
+  .slide:not([hidden]) { animation: slide-reveal .32s ease-out; }
+  @keyframes slide-reveal { from { opacity: .3; } to { opacity: 1; } }
+  .notice { background: var(--primary-tint); border-radius: var(--radius); padding: 12px 16px; margin: 0 0 24px; font-size: 16px; }
+  .sec-label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--primary-dark); margin: 0 0 6px; }
+  .sec-label .num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 13px; }
+  h2 { font-size: clamp(26px, 4.5vw, 34px); line-height: 1.2; margin: 0 0 16px; color: var(--brand); }
+  h3 { font-size: 22px; line-height: 1.3; margin: 28px 0 10px; color: var(--brand); }
+  h4, .card h3 { font-size: 18px; line-height: 1.6; margin: 0 0 6px; color: var(--brand); }
+  .lede { font-size: 20px; color: var(--muted); margin: 0 0 8px; }
+  .time { font-size: 15px; color: var(--muted); margin: 0 0 24px; }
+  .fineprint { font-size: 14px; color: var(--muted); }
+
+  /* Title slide and section banners: a --brand panel. */
+  .hero { background: var(--brand); color: var(--on-brand); border-radius: var(--radius); }
+  .hero-inner { padding: 48px 36px 52px; display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .08em; font-size: 14px; font-weight: 700; color: var(--accent); margin: 0 0 8px; }
+  .hero h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.1; margin: 0 0 16px; }
+  .hero h2 { color: var(--on-brand); margin-bottom: 12px; }
+  .hero p { margin: 0 0 12px; max-width: 34em; }
+  .hero ul { margin: 0 0 12px; padding-left: 22px; }
+  .hero .sec-label { color: var(--accent); }
+  .hero .sec-label .num { background: var(--accent); color: var(--brand); }
+  .brand-mark { width: 150px; height: 150px; }
+  @media (max-width: 640px) { .hero-inner { grid-template-columns: 1fr; padding: 32px 24px 36px; } .brand-mark { display: none; } }
+
+  /* ---------- Building blocks ---------- */
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  /* Four-box grids: smaller cards so all four fit on one row when there's room. */
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .g4 .card { padding: 16px; }
+  .g4 .card p { font-size: 16px; line-height: 1.5; }
+  .g4 .card h3, .g4 .card h4 { font-size: 17px; }
+  .g4 .icon { width: 38px; height: 38px; margin-bottom: 10px; }
+  .g4 .icon svg { width: 20px; height: 20px; }
+  /* Too narrow for four across: go 2 x 2 instead of 3 + 1 (one column on phones). */
+  @container (max-width: 860px) { .g4 { grid-template-columns: repeat(auto-fit, minmax(max(190px, calc(50% - 6px)), 1fr)); } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .card p { margin: 0 0 8px; }
+  .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+  .card ul { margin: 0; padding-left: 20px; }
+  .card.brand { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+  .card.brand h3, .card.brand h4 { color: var(--accent); }
+  .tag { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 10px; border-radius: 999px; background: var(--primary-tint); color: var(--primary-dark); margin-bottom: 8px; }
+  .tag.accent { background: var(--accent-tint); color: var(--ink); }
+  .tag.red { background: var(--bad-tint); color: var(--bad); }
+  .tag.green { background: var(--good-tint); color: var(--good); }
+  .icon { width: 44px; height: 44px; border-radius: 50%; background: var(--primary); display: grid; place-items: center; margin-bottom: 12px; }
+  .icon svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .callout { display: flex; gap: 14px; align-items: flex-start; background: var(--accent-tint); border-radius: var(--radius); padding: 18px 20px; margin: 24px 0; }
+  .callout svg { flex: none; width: 26px; height: 26px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
+  .callout p { margin: 0; }
+  .quote { margin: 28px 0; padding: 24px 28px; background: var(--brand); color: var(--on-brand); border-radius: var(--radius); }
+  .quote p { font-size: 22px; line-height: 1.4; margin: 0 0 8px; font-style: italic; }
+  .quote cite { font-style: normal; font-size: 15px; color: var(--accent); }
+  .key { font-weight: 700; color: var(--brand); }
+  .scale-note { font-size: 15px; color: var(--muted); margin-top: 10px; }
+  figure { margin: 0; }
+  figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; }
+  .fade-up:not([hidden]) { animation: fade-up .6s ease-out both; }
+  @keyframes fade-up { from { opacity: 0; transform: translateY(16px); } }
+
+  /* Big numbers (optional): a whole number with an optional % counts up when its slide opens. */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+  .stat { font-size: 64px; font-weight: 800; line-height: 1; margin: 0 0 12px; color: var(--primary-dark); font-variant-numeric: tabular-nums; }
+
+  /* Reveal (details): a single "Show more" box. */
+  details.reveal { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); margin: 16px 0; }
+  details.reveal summary { cursor: pointer; padding: 14px 18px; font-weight: 600; color: var(--primary-dark); list-style: none; }
+  details.reveal summary::-webkit-details-marker { display: none; }
+  details.reveal summary::before { content: "+"; display: inline-block; width: 1.2em; font-weight: 700; }
+  details.reveal[open] summary::before { content: "\2212"; }
+  details.reveal .body { padding: 0 18px 16px; }
+
+  /* Fold boxes: only the icon/tag and heading show until the box is opened. While closed, the whole box is the button. */
+  .fold { position: relative; }
+  .fold-btn { font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; align-items: baseline; gap: .4em; }
+  .fold-btn::before { content: "+"; font-weight: 700; width: .8em; flex: none; }
+  .fold-btn[aria-expanded="true"]::before { content: "\2212"; }
+  .fold:not(.open) .fold-btn::after { content: ""; position: absolute; inset: 0; }
+  .fold:not(.open):hover { border-color: var(--primary); }
+  .fold:not(.open) > :nth-last-child(2) { margin-bottom: 0; }
+  /* Rows of fold boxes that grow on their own: opening one box doesn't stretch the others. */
+  .fold-row { align-items: start; align-content: start; }
+
+  /* Key takeaways: numbered fold cards. */
+  .take-num { display: block; font-size: 44px; font-weight: 800; line-height: 1; color: var(--primary); margin: 0 0 8px; }
+
+  /* ---------- Sort activity ----------
+     One example shows at a time, full width above the boxes; the next appears when it is sorted.
+     Drag it, or select it and then select a box (keyboard and touch). */
+  .sort-count { margin: 12px 0 6px; font-size: 14px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--primary-dark); }
+  .sort-pool { margin: 0 0 14px; }
+  .sort-pool .sort-card ~ .sort-card { display: none; }
+  .sort-pool:empty { display: none; }
+  .sort-card { display: block; width: 100%; font: inherit; font-size: 18px; line-height: 1.45; text-align: left; color: var(--ink); padding: 18px 20px; background: var(--bg); border: 2px dashed var(--primary); border-radius: var(--radius); cursor: grab; touch-action: none; user-select: none; }
+  .sort-pool .sort-card::before { content: "Drag this card"; display: table; margin: 0 0 8px; padding: 1px 10px; border-radius: 999px; background: var(--primary-tint); color: var(--primary-dark); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .sort-card:hover { border-style: solid; }
+  .sort-card[aria-pressed="true"] { border-style: solid; box-shadow: 0 0 0 3px var(--primary-tint); }
+  .sort-card.dragging { position: relative; z-index: 5; cursor: grabbing; box-shadow: 0 10px 24px rgba(16, 24, 40, .22); }
+  .sort-card.wrong { border-color: var(--bad); animation: shake .35s; }
+  .sort-card.placed { cursor: default; font-size: 14px; line-height: 1.4; padding: 8px 10px; border-radius: 10px; border: 2px solid var(--good); background: var(--good-tint); }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  .sort-hint { margin: -4px 0 10px; text-align: center; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .sort-hint::before, .sort-hint::after { content: "\2193"; margin: 0 10px; color: var(--primary); }
+  .sort-bins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 760px) { .sort-bins { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 400px) { .sort-bins { grid-template-columns: 1fr; } }
+  .sort-bin { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 2px dashed var(--muted); border-radius: var(--radius); background: var(--surface); transition: border-color .15s, background .15s; }
+  .sort-bin.over, .sort.picking .sort-bin:hover { border-color: var(--primary); background: var(--primary-tint); }
+  .sort-target { font: inherit; text-align: left; color: inherit; background: none; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+  .sort-name { display: block; font-size: 17px; font-weight: 700; color: var(--brand); }
+  .sort-name::before { content: "+"; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 8px; border: 1.5px solid var(--muted); border-radius: 50%; font-size: 14px; line-height: 1; color: var(--muted); vertical-align: 1px; }
+  .sort-def { display: block; font-size: 14px; color: var(--muted); }
+
+  /* ---------- Role picker ---------- */
+  .persona { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 20px; }
+  .persona-label { font-size: 15px; font-weight: 700; color: var(--muted); margin-right: 4px; }
+  .persona-btn { font: inherit; font-size: 15px; font-weight: 600; padding: 6px 16px; border-radius: 8px; border: 2px solid var(--primary); background: var(--bg); color: var(--primary-dark); cursor: pointer; }
+  .persona-btn:hover { background: var(--primary-tint); }
+  .persona-btn[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
+  [data-persona][hidden] { display: none; }
+
+  /* ---------- Buttons ---------- */
+  .btn { font: inherit; font-size: 16px; font-weight: 600; padding: 10px 18px; border-radius: 10px; border: 2px solid var(--primary); background: var(--primary); color: var(--on-primary); cursor: pointer; }
+  .btn:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+  .btn.ghost { background: var(--bg); color: var(--primary-dark); }
+  .btn.ghost:hover { background: var(--primary-tint); }
+  .btn.small { font-size: 14px; padding: 6px 12px; align-self: flex-start; margin-top: 10px; }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+  .btn[aria-disabled="true"]:hover { background: var(--primary); border-color: var(--primary); }
+  .linklike { font: inherit; color: var(--primary-dark); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+  /* ---------- Questions (practice and section checks) ---------- */
+  fieldset.q { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px 14px; margin: 0 0 20px; background: var(--bg); }
+  fieldset.q legend { font-weight: 600; padding: 0 6px; margin-left: -6px; color: var(--brand); }
+  .q .scenario { margin: 4px 0 12px; color: var(--muted); }
+  .opt { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; cursor: pointer; }
+  .opt:hover { background: var(--surface); }
+  .opt input { margin-top: 6px; width: 18px; height: 18px; flex: none; accent-color: var(--primary); }
+  .opt .letter { font-weight: 800; color: var(--primary-dark); min-width: 1.2em; }
+  .opt.correct { border: 2px solid var(--good); background: var(--good-tint); }
+  .opt.wrong { border: 2px solid var(--bad); background: var(--bad-tint); }
+  .opt .mark { margin-left: auto; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .opt.correct .mark { color: var(--good); }
+  .opt.wrong .mark { color: var(--bad); }
+  .feedback { margin-top: 10px; padding: 12px 14px; border-radius: 10px; font-size: 16px; }
+  .feedback.good { background: var(--good-tint); color: #0f3d22; }
+  .feedback.bad { background: var(--bad-tint); color: #5c0b22; }
+  .feedback strong { display: block; margin-bottom: 2px; }
+  .result { border-radius: var(--radius); padding: 22px 24px; margin: 8px 0 24px; }
+  .result.pass { background: var(--good-tint); border: 2px solid var(--good); }
+  .result.fail { background: var(--bad-tint); border: 2px solid var(--bad); }
+  .result h3 { margin: 0 0 6px; }
+  .result p { margin: 0 0 10px; }
+  .result p:last-child { margin-bottom: 0; }
+  .check-result { margin: 14px 0 0; padding: 14px 18px; }
+  .check-result .btn { margin-top: 4px; }
+
+  /* Close button on the last slide: shows once the module is finished. */
+  .close-row { margin-top: 16px; }
+  .close-row:not([hidden]) { animation: fade-up .5s ease-out; }
+  .close-note { margin: 10px 0 0; font-size: 15px; }
+
+  /* ---------- Fit the slide to the screen height ----------
+     Shorter screens get slimmer bars and tighter spacing in two steps. --avail is the height left for the slide
+     between the top bar and the Previous/Next bar; tall components can size themselves to it.
+     Phones and high zoom can still scroll (WCAG reflow). */
+  :root { --vh: 100vh; --nav-h: 75px; --main-pt: 32px; --main-pb: 48px; }
+  @supports (height: 100dvh) { :root { --vh: 100dvh; } }
+  :root { --avail: calc(var(--vh) - var(--bar-h) - var(--nav-h) - var(--main-pt) - var(--main-pb)); }
+  main { padding-top: var(--main-pt); padding-bottom: var(--main-pb); }
+  .stage { min-height: calc(var(--vh) - var(--bar-h)); }
+  @media (max-height: 860px) {
+    :root { --top-h: 52px; --nav-h: 61px; --main-pt: 20px; --main-pb: 20px; }
+    body { line-height: 1.5; }
+    .navbar-inner { padding-top: 8px; padding-bottom: 8px; }
+    .navbar .btn { padding: 7px 16px; }
+    h2 { font-size: clamp(24px, 4vw, 30px); margin-bottom: 10px; }
+    .sec-label { margin-bottom: 4px; }
+    .time { margin-bottom: 14px; }
+    .slide > p { margin: 0 0 12px; }
+    .hero-inner { padding: 32px 32px 36px; }
+    .grid { gap: 12px; }
+    .card { padding: 16px; }
+    .callout { margin: 14px 0; padding: 12px 16px; }
+    .quote { margin: 16px 0; padding: 16px 22px; }
+    details.reveal { margin: 10px 0; }
+    fieldset.q { padding: 12px 18px 10px; margin-bottom: 12px; }
+    .opt { padding: 8px 12px; margin: 6px 0; }
+    .persona { margin-bottom: 12px; }
+    .sort-card { padding: 14px 18px; }
+  }
+  @media (max-height: 680px) {
+    :root { --top-h: 48px; --nav-h: 55px; --main-pt: 14px; --main-pb: 14px; }
+    body { font-size: 17px; line-height: 1.45; }
+    .navbar-inner { padding-top: 6px; padding-bottom: 6px; }
+    .navbar .btn { padding: 6px 14px; font-size: 15px; }
+    h2 { font-size: clamp(22px, 3.6vw, 27px); margin-bottom: 8px; }
+    .lede { font-size: 18px; }
+    .time { margin-bottom: 10px; }
+    .slide > p { margin-bottom: 10px; }
+    .hero-inner { padding: 24px 28px 28px; }
+    .brand-mark { width: 120px; height: 120px; }
+    .card { padding: 14px; }
+    .opt { padding: 6px 10px; margin: 4px 0; }
+    .opt input { margin-top: 4px; }
+    .sort-card { font-size: 17px; padding: 12px 16px; }
+  }
+</style>
+</head>
+<body data-menu="closed">
+<a class="skip" href="#main">Skip to main content</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="menu" aria-expanded="false" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <span class="menu-label">Menu</span>
+    </button>
+    <img src="assets/uplift-logo-white.png" alt="Uplift Education">
+    <span class="course">Sample Module Title</span>
+    <span class="pct" id="pct" aria-live="polite">0% complete</span>
+    <!-- Resources and Settings (see Dropdowns script): disclosure panels, so Tab moves through each one in order. -->
+    <div class="drop">
+      <button type="button" class="drop-toggle" aria-expanded="false" aria-controls="resources-panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+        <span class="drop-label">Resources</span>
+      </button>
+      <!-- Links open in a new tab and say so to screen readers. Only link to pages staff can open with their Uplift account. -->
+      <ul class="drop-panel drop-links" id="resources-panel" hidden>
+        <li><a href="#" target="_blank" rel="noopener">[[PLACEHOLDER: Resource link 1, e.g. the policy this module is based on]]<span class="sr-only"> (opens in a new tab)</span></a></li>
+        <li><a href="#" target="_blank" rel="noopener">[[PLACEHOLDER: Resource link 2]]<span class="sr-only"> (opens in a new tab)</span></a></li>
+        <li><a href="mailto:[[PLACEHOLDER: team-email]]@uplifteducation.org">[[PLACEHOLDER: Email: team contact]]</a></li>
+      </ul>
+    </div>
+    <div class="drop">
+      <button type="button" class="drop-toggle" aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="drop-label">Settings</span>
+      </button>
+      <div class="drop-panel" id="settings-panel" hidden>
+        <button type="button" class="set-item sound-toggle" id="sound-toggle" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/><path class="off" d="m16 9 6 6m0-6-6 6"/></svg>
+          Sound effects<span class="set-state" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="set-item" id="tips-toggle" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          Viewing tips<span class="set-state" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <!-- Sound effects as elements (not script paths) so the packager embeds them. -->
+    <audio id="sfx-click" src="assets/sfx-click.mp3" preload="auto"></audio>
+    <audio id="sfx-correct" src="assets/sfx-correct.mp3" preload="auto"></audio>
+    <audio id="sfx-wrong" src="assets/sfx-wrong.mp3" preload="auto"></audio>
+  </div>
+  <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+  <!-- Tip strip (see Tip strip script): the PC and Mac buttons each open their steps below the line. -->
+  <div class="tip" id="tip" role="region" aria-label="Viewing tips">
+    <div class="tip-row">
+      <p>For the best experience, make this module full screen and make sure animation effects are turned on. Follow the steps for your
+        <button type="button" class="tip-link" aria-expanded="false" aria-controls="tip-pc">PC</button> or
+        <button type="button" class="tip-link" aria-expanded="false" aria-controls="tip-mac">Mac</button>.</p>
+      <button type="button" class="tip-hide" id="tip-hide">Hide<span class="sr-only"> viewing tips</span></button>
+    </div>
+    <div class="tip-steps" id="tip-pc" hidden>
+      <h3>On a PC (Windows 11)</h3>
+      <ol>
+        <li><strong>Full screen:</strong> press <kbd>F11</kbd>. On some laptops, press <kbd>Fn</kbd> + <kbd>F11</kbd>. Press it again to leave full screen.</li>
+        <li><strong>Animation effects:</strong> open <strong>Start</strong> &gt; <strong>Settings</strong> &gt; <strong>Accessibility</strong> &gt; <strong>Visual effects</strong>, and turn <strong>Animation effects</strong> on.</li>
+      </ol>
+    </div>
+    <div class="tip-steps" id="tip-mac" hidden>
+      <h3>On a Mac</h3>
+      <ol>
+        <li><strong>Full screen:</strong> press <kbd>Control</kbd> + <kbd>Command</kbd> + <kbd>F</kbd>, or select the green button at the top left of the browser window. Do it again to leave full screen.</li>
+        <li><strong>Animation effects:</strong> open the <strong>Apple menu</strong> &gt; <strong>System Settings</strong> &gt; <strong>Accessibility</strong> &gt; <strong>Display</strong>, and turn <strong>Reduce motion</strong> off.</li>
+      </ol>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="sidebar" id="menu" aria-label="Module menu" hidden>
+  <div class="menu-head">
+    <p class="menu-title">Menu</p>
+    <button type="button" class="menu-close" id="menu-close">Close menu</button>
+  </div>
+  <ol class="menu-list" id="menu-list"></ol>
+</nav>
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="stage">
+<main id="main">
+<p class="notice" id="resume-note" hidden></p>
+
+<!-- ===================== 0. Welcome ===================== -->
+<section class="slide" data-section="welcome" data-title="Welcome">
+  <div class="hero">
+    <div class="hero-inner">
+      <div>
+        <p class="eyebrow">Uplift Staff Training</p>
+        <h1>Sample Module Title</h1>
+        <p>By the end of the module, you will be able to:</p>
+        <ul>
+          <li>[[PLACEHOLDER: Objective 1, starting with a verb, e.g. "Explain ..."]]</li>
+          <li>[[PLACEHOLDER: Objective 2, starting with a verb, e.g. "Choose ..."]]</li>
+          <li>[[PLACEHOLDER: Objective 3, starting with a verb, e.g. "Write ..."]]</li>
+        </ul>
+      </div>
+      <!-- Uplift sunburst-and-hand mark. Brand art: keep its own colors whatever the theme. -->
+      <svg class="brand-mark" viewBox="0 0 153.94 153.94" aria-hidden="true" focusable="false">
+        <path fill="#ffc529" d="M127.36,76.97c0-.83-.02-1.66-.06-2.48l26.64-3.49-1.05-8.07-26.64,3.48c-.35-1.66-.79-3.28-1.3-4.87l24.83-10.26-3.11-7.52-24.84,10.26c-.77-1.5-1.61-2.96-2.52-4.37l21.34-16.34-4.95-6.46-21.34,16.34c-1.12-1.25-2.31-2.44-3.56-3.57l16.38-21.3-6.45-4.96-16.38,21.31c-1.41-.91-2.86-1.76-4.36-2.53l10.3-24.82-7.51-3.12-10.3,24.81c-1.59-.51-3.22-.95-4.87-1.31l3.53-26.64L83.07,0l-3.53,26.64c-.85-.04-1.7-.06-2.56-.06s-1.66.02-2.48.06l-3.48-26.64-8.07,1.05,3.48,26.64c-1.66.35-3.28.79-4.87,1.3l-10.26-24.83-7.52,3.11,10.26,24.84c-1.5.77-2.96,1.61-4.37,2.52l-16.34-21.34-6.46,4.95,16.34,21.33c-1.25,1.13-2.44,2.32-3.57,3.56l-21.3-16.38-4.96,6.45,21.31,16.38c-.91,1.41-1.76,2.86-2.53,4.36l-24.82-10.3-3.12,7.51,24.81,10.3c-.51,1.59-.95,3.22-1.31,4.87l-26.63-3.53L.01,70.87l26.64,3.53c-.04.85-.07,1.71-.07,2.57s.02,1.66.06,2.48l-26.64,3.48,1.05,8.07,26.64-3.48c.35,1.66.79,3.28,1.3,4.87l-24.83,10.26,3.11,7.52,24.84-10.26c.77,1.5,1.61,2.96,2.52,4.37l-21.34,16.34,4.95,6.46,21.33-16.34c1.13,1.25,2.31,2.44,3.56,3.57l-16.37,21.3,6.45,4.96,16.38-21.31c1.41.91,2.86,1.76,4.36,2.53l-10.3,24.82,7.51,3.12,10.3-24.81c1.59.51,3.21.95,4.87,1.31l8.07,1.07c.85.04,1.71.07,2.57.07s1.65-.02,2.48-.06l8.07-1.05c1.66-.35,3.28-.79,4.87-1.3l10.26,24.83,7.52-3.11-10.26-24.84c1.5-.77,2.96-1.61,4.37-2.52l16.34,21.34,6.46-4.95-16.34-21.33c1.25-1.13,2.44-2.32,3.57-3.56l21.3,16.38,4.96-6.45-21.31-16.38c.91-1.41,1.76-2.86,2.53-4.36l24.82,10.31,3.12-7.52-24.81-10.3c.52-1.59.95-3.22,1.31-4.87l26.63,3.53,1.07-8.07-26.64-3.53c.04-.85.07-1.71.07-2.57"/>
+        <path fill="#fff" d="M116.22,76.97c0,21.68-17.57,39.25-39.25,39.25s-39.25-17.57-39.25-39.25,17.57-39.25,39.25-39.25,39.25,17.57,39.25,39.25"/>
+        <path fill="#0468b1" d="M95.21,93.14c1.72-3.25,12.17-22.11,12.96-24.06,1.33-3.27-1.8-5.73-4.67-2.55-.37.41-7.79,10.06-9.55,11.64-.9.81-2.21.11-1.9-.96.25-.89,5.41-19.48,5.94-21.93.74-3.47-4.19-5.05-5.65-1.67-.59,1.38-7.82,19.31-8.36,20.5-.55,1.22-2.16.91-2.24-.32,0,0-1.38-22.69-1.68-25.52-.3-2.88-5.6-3.14-6.02.18-.2,1.58-1.14,23.98-1.33,25.35-.19,1.41-1.86,1.49-2.31.32-.29-.75-7.31-18.02-8.6-20.32-1.63-2.9-6.36-1.58-5.3,2.52,1.15,4.44,5.25,19.97,6.21,23.69.98,3.8-1.81,4.17-3.68,3.07-1.82-1.07-3.43-2.33-6.69-4.63-3.76-2.65-8.41.17-6.34,2.34,1.07,1.12,2.57,3.43,11.16,14.17,5.25,6.57,9.19,8.21,11.47,9.1l-4.77,49.88h26.23l-4.77-49.88c5.22-1.96,7.69-6.76,9.89-10.93Z"/>
+      </svg>
+    </div>
+  </div>
+  <p style="margin-top:24px">Select <strong>Next</strong> to begin. Use the <strong>Menu</strong> button at the top to see every slide and go back to any slide you've already viewed.</p>
+  <p><strong>To finish:</strong> view every section and pass both section checks. You can stop at any time and pick up where you left off.</p>
+  <p class="fineprint">[[PLACEHOLDER: Source line, e.g. "Based on the Uplift ... (Month Year)."]] All names and scenarios are fictional.</p>
+</section>
+
+<!-- ===================== 1. Section one ===================== -->
+<!-- Section start slide: a banner with what the section covers. -->
+<section class="slide" data-section="s1" data-title="Section start">
+  <div class="hero">
+    <div class="hero-inner">
+      <div>
+        <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section 1</p>
+        <h2>Section one</h2>
+        <p>In this section, you'll:</p>
+        <ul>
+          <li>[[PLACEHOLDER: What learners do or learn in this section, point 1]]</li>
+          <li>[[PLACEHOLDER: Point 2]]</li>
+        </ul>
+        <p class="eyebrow" style="margin:0">[[PLACEHOLDER: About N minutes]]</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Content slide: a card grid (g2, g3 or g4). Icons are decorative (aria-hidden); the heading carries the meaning. -->
+<section class="slide" data-section="s1" data-title="[[PLACEHOLDER: Card grid slide]]">
+  <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section one</p>
+  <h2>[[PLACEHOLDER: Slide heading that states the main idea]]</h2>
+  <p>[[PLACEHOLDER: One or two plain-language sentences that set up the cards.]]</p>
+  <div class="grid g3">
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <h3>[[PLACEHOLDER: Card heading 1]]</h3>
+      <p>[[PLACEHOLDER: One short sentence.]]</p>
+    </div>
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <h3>[[PLACEHOLDER: Card heading 2]]</h3>
+      <p>[[PLACEHOLDER: One short sentence.]]</p>
+    </div>
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6v6c0 5 4 9 9 10 5-1 9-5 9-10V6z"/></svg></div>
+      <h3>[[PLACEHOLDER: Card heading 3]]</h3>
+      <p>[[PLACEHOLDER: One short sentence.]]</p>
+    </div>
+  </div>
+  <details class="reveal">
+    <summary>[[PLACEHOLDER: Optional "Show more" label, e.g. "See an example"]]</summary>
+    <div class="body"><p>[[PLACEHOLDER: Extra detail. Opening this box is required before Next unlocks; remove the box if it isn't needed.]]</p></div>
+  </details>
+</section>
+
+<!-- Fold-box slide: each .card.fold shows its icon and heading; the + opens the rest. Next unlocks once every box is opened. -->
+<section class="slide" data-section="s1" data-title="[[PLACEHOLDER: Fold box slide]]">
+  <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section one</p>
+  <h2>[[PLACEHOLDER: Slide heading]]</h2>
+  <p>Open each box marked <strong>+</strong> to read more.</p>
+  <div class="grid g4 fold-row">
+    <div class="card fold">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg></div>
+      <h3>[[PLACEHOLDER: Box 1 heading]]</h3>
+      <p>[[PLACEHOLDER: What shows when the box opens.]]</p>
+    </div>
+    <div class="card fold">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg></div>
+      <h3>[[PLACEHOLDER: Box 2 heading]]</h3>
+      <p>[[PLACEHOLDER: What shows when the box opens.]]</p>
+    </div>
+    <div class="card fold">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M4 15l4-4 4 4 8-8"/></svg></div>
+      <h3>[[PLACEHOLDER: Box 3 heading]]</h3>
+      <p>[[PLACEHOLDER: What shows when the box opens.]]</p>
+    </div>
+    <div class="card fold">
+      <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <h3>[[PLACEHOLDER: Box 4 heading]]</h3>
+      <p>[[PLACEHOLDER: What shows when the box opens.]]</p>
+    </div>
+  </div>
+  <div class="callout">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <p>[[PLACEHOLDER: The one thing to remember from this slide.]]</p>
+  </div>
+</section>
+
+<!-- Sort activity (data-gate="sort"): each card's data-answer matches one box's data-bin. data-why is the feedback
+     shown when it's sorted right. Drag, or select a card and then a box (keyboard and touch). One sort per module
+     as written: see the README to add more. -->
+<section class="slide" data-section="s1" data-title="[[PLACEHOLDER: Sort activity]]" data-gate="sort">
+  <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section one</p>
+  <h2>[[PLACEHOLDER: Sort activity heading]]</h2>
+  <p>Drag each example into the right box, or select it and then select a box.</p>
+  <p class="sort-count">Example 1 of 4</p>
+  <div class="sort" data-sort>
+    <div class="sort-pool">
+      <button type="button" class="sort-card" aria-pressed="false" data-answer="a" data-why="[[PLACEHOLDER: Why example 1 belongs in category A.]]">[[PLACEHOLDER: Example 1. A short, fictional workplace situation that fits category A.]]</button>
+      <button type="button" class="sort-card" aria-pressed="false" data-answer="b" data-why="[[PLACEHOLDER: Why example 2 belongs in category B.]]">[[PLACEHOLDER: Example 2, fits category B.]]</button>
+      <button type="button" class="sort-card" aria-pressed="false" data-answer="c" data-why="[[PLACEHOLDER: Why example 3 belongs in category C.]]">[[PLACEHOLDER: Example 3, fits category C.]]</button>
+      <button type="button" class="sort-card" aria-pressed="false" data-answer="d" data-why="[[PLACEHOLDER: Why example 4 belongs in category D.]]">[[PLACEHOLDER: Example 4, fits category D.]]</button>
+    </div>
+    <p class="sort-hint" aria-hidden="true">Drop into one of the zones below</p>
+    <div class="sort-bins">
+      <div class="sort-bin" data-bin="a"><button type="button" class="sort-target"><span class="sort-name">[[PLACEHOLDER: Category A]]</span><span class="sort-def">[[PLACEHOLDER: One-line definition.]]</span></button><div class="sort-placed"></div></div>
+      <div class="sort-bin" data-bin="b"><button type="button" class="sort-target"><span class="sort-name">[[PLACEHOLDER: Category B]]</span><span class="sort-def">[[PLACEHOLDER: One-line definition.]]</span></button><div class="sort-placed"></div></div>
+      <div class="sort-bin" data-bin="c"><button type="button" class="sort-target"><span class="sort-name">[[PLACEHOLDER: Category C]]</span><span class="sort-def">[[PLACEHOLDER: One-line definition.]]</span></button><div class="sort-placed"></div></div>
+      <div class="sort-bin" data-bin="d"><button type="button" class="sort-target"><span class="sort-name">[[PLACEHOLDER: Category D]]</span><span class="sort-def">[[PLACEHOLDER: One-line definition.]]</span></button><div class="sort-placed"></div></div>
+    </div>
+    <div class="feedback sort-status" aria-live="polite" hidden></div>
+  </div>
+  <!-- Optional: fades up once everything is sorted. -->
+  <div class="callout fade-up sort-after" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6v6c0 5 4 9 9 10 5-1 9-5 9-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
+    <p><strong>[[PLACEHOLDER: The takeaway, shown once all four are sorted.]]</strong></p>
+  </div>
+</section>
+
+<!-- Section check: one question per slide. All questions share data-check (the section id) and data-pass (right
+     answers needed). Only the LAST question has the .check-result box. data-answer = the correct option's value. -->
+<section class="slide" data-section="s1" data-title="Check: Question 1" data-gate="check">
+  <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section one check</p>
+  <h2>Question 1 of 2</h2>
+  <form class="check" data-check="s1" data-pass="1" novalidate>
+    <fieldset class="q" data-answer="B">
+      <legend>[[PLACEHOLDER: Question 1, about an idea from Section one]]</legend>
+      <label class="opt"><input type="radio" name="s1-q1" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q1" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Correct answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q1" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q1" value="D"><span class="letter">D</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden aria-live="polite"></div>
+    </fieldset>
+  </form>
+</section>
+
+<section class="slide" data-section="s1" data-title="Check: Question 2" data-gate="check">
+  <p class="sec-label"><span class="num" aria-hidden="true">1</span> Section one check</p>
+  <h2>Question 2 of 2</h2>
+  <form class="check" data-check="s1" data-pass="1" novalidate>
+    <fieldset class="q" data-answer="D">
+      <legend>[[PLACEHOLDER: Question 2]]</legend>
+      <label class="opt"><input type="radio" name="s1-q2" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q2" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q2" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s1-q2" value="D"><span class="letter">D</span><span>[[PLACEHOLDER: Correct answer]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden aria-live="polite"></div>
+    </fieldset>
+    <div class="result check-result" tabindex="-1" hidden></div>
+  </form>
+</section>
+
+<!-- ===================== 2. Section two ===================== -->
+<section class="slide" data-section="s2" data-title="Section start">
+  <div class="hero">
+    <div class="hero-inner">
+      <div>
+        <p class="sec-label"><span class="num" aria-hidden="true">2</span> Section 2</p>
+        <h2>Section two</h2>
+        <p>In this section, you'll:</p>
+        <ul>
+          <li>[[PLACEHOLDER: Point 1]]</li>
+          <li>[[PLACEHOLDER: Point 2]]</li>
+        </ul>
+        <p class="eyebrow" style="margin:0">[[PLACEHOLDER: About N minutes]]</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Role picker: any element with data-persona="teacher|campus|central" (other than the buttons) shows only for
+     that role. The role is shared: picking it here also sets it on every later slide with a picker. -->
+<section class="slide" data-section="s2" data-title="[[PLACEHOLDER: Role example]]">
+  <p class="sec-label"><span class="num" aria-hidden="true">2</span> Section two</p>
+  <h2>[[PLACEHOLDER: Slide heading, e.g. "What this looks like in your role"]]</h2>
+  <p>Choose your role to see an example from your work.</p>
+  <div class="persona" role="group" aria-label="Choose your role">
+    <span class="persona-label" aria-hidden="true">I work as:</span>
+    <button type="button" class="persona-btn" aria-pressed="true" data-persona="teacher">Teacher</button>
+    <button type="button" class="persona-btn" aria-pressed="false" data-persona="campus">Campus staff</button>
+    <button type="button" class="persona-btn" aria-pressed="false" data-persona="central">Central office</button>
+  </div>
+  <div class="grid g2" data-persona="teacher">
+    <div class="card"><span class="tag">Teacher</span><h3>[[PLACEHOLDER: Teacher example heading]]</h3><p>[[PLACEHOLDER: A fictional classroom example.]]</p></div>
+    <div class="card"><span class="tag accent">Try it</span><h3>[[PLACEHOLDER: What to do]]</h3><p>[[PLACEHOLDER: One practical step.]]</p></div>
+  </div>
+  <div class="grid g2" data-persona="campus" hidden>
+    <div class="card"><span class="tag">Campus staff</span><h3>[[PLACEHOLDER: Campus staff example heading]]</h3><p>[[PLACEHOLDER: A fictional campus example.]]</p></div>
+    <div class="card"><span class="tag accent">Try it</span><h3>[[PLACEHOLDER: What to do]]</h3><p>[[PLACEHOLDER: One practical step.]]</p></div>
+  </div>
+  <div class="grid g2" data-persona="central" hidden>
+    <div class="card"><span class="tag">Central office</span><h3>[[PLACEHOLDER: Central office example heading]]</h3><p>[[PLACEHOLDER: A fictional central office example.]]</p></div>
+    <div class="card"><span class="tag accent">Try it</span><h3>[[PLACEHOLDER: What to do]]</h3><p>[[PLACEHOLDER: One practical step.]]</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="s2" data-title="Check: Question 1" data-gate="check">
+  <p class="sec-label"><span class="num" aria-hidden="true">2</span> Section two check</p>
+  <h2>Question 1 of 2</h2>
+  <form class="check" data-check="s2" data-pass="1" novalidate>
+    <fieldset class="q" data-answer="A">
+      <legend>[[PLACEHOLDER: Question 1, about an idea from Section two]]</legend>
+      <label class="opt"><input type="radio" name="s2-q1" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Correct answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q1" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q1" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q1" value="D"><span class="letter">D</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden aria-live="polite"></div>
+    </fieldset>
+  </form>
+</section>
+
+<section class="slide" data-section="s2" data-title="Check: Question 2" data-gate="check">
+  <p class="sec-label"><span class="num" aria-hidden="true">2</span> Section two check</p>
+  <h2>Question 2 of 2</h2>
+  <form class="check" data-check="s2" data-pass="1" novalidate>
+    <fieldset class="q" data-answer="C">
+      <legend>[[PLACEHOLDER: Question 2]]</legend>
+      <label class="opt"><input type="radio" name="s2-q2" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q2" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q2" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Correct answer]]</span></label>
+      <label class="opt"><input type="radio" name="s2-q2" value="D"><span class="letter">D</span><span>[[PLACEHOLDER: Wrong answer]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden aria-live="polite"></div>
+    </fieldset>
+    <div class="result check-result" tabindex="-1" hidden></div>
+  </form>
+</section>
+
+<!-- ===================== 3. Practice ===================== -->
+<!-- Practice (data-gate="practice", not scored): one form.practice per role. data-answer = the best option;
+     the feedback's data-why explains it. Answering the scenario for the learner's role unlocks Next. -->
+<section class="slide" data-section="practice" data-title="Practice scenario" data-gate="practice">
+  <p class="sec-label"><span class="num" aria-hidden="true">3</span> Practice</p>
+  <h2>[[PLACEHOLDER: Practice heading]]</h2>
+  <p class="lede">Choose your role, then pick the best answer for the scenario.</p>
+  <p class="time">Not scored</p>
+  <div class="persona" role="group" aria-label="Choose your role">
+    <span class="persona-label" aria-hidden="true">I work as:</span>
+    <button type="button" class="persona-btn" aria-pressed="true" data-persona="teacher">Teacher</button>
+    <button type="button" class="persona-btn" aria-pressed="false" data-persona="campus">Campus staff</button>
+    <button type="button" class="persona-btn" aria-pressed="false" data-persona="central">Central office</button>
+  </div>
+  <form class="practice" data-persona="teacher" data-answer="B" novalidate>
+    <fieldset class="q">
+      <legend>What should you do?</legend>
+      <p class="scenario">[[PLACEHOLDER: A fictional teacher scenario, two or three sentences.]]</p>
+      <label class="opt"><input type="radio" name="p1-teacher" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-teacher" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Best option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-teacher" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden data-why="[[PLACEHOLDER: Why B is best, in one or two sentences.]]" aria-live="polite"></div>
+    </fieldset>
+  </form>
+  <form class="practice" data-persona="campus" data-answer="A" novalidate hidden>
+    <fieldset class="q">
+      <legend>What should you do?</legend>
+      <p class="scenario">[[PLACEHOLDER: A fictional campus staff scenario.]]</p>
+      <label class="opt"><input type="radio" name="p1-campus" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Best option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-campus" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-campus" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden data-why="[[PLACEHOLDER: Why A is best.]]" aria-live="polite"></div>
+    </fieldset>
+  </form>
+  <form class="practice" data-persona="central" data-answer="C" novalidate hidden>
+    <fieldset class="q">
+      <legend>What should you do?</legend>
+      <p class="scenario">[[PLACEHOLDER: A fictional central office scenario.]]</p>
+      <label class="opt"><input type="radio" name="p1-central" value="A"><span class="letter">A</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-central" value="B"><span class="letter">B</span><span>[[PLACEHOLDER: Option]]</span></label>
+      <label class="opt"><input type="radio" name="p1-central" value="C"><span class="letter">C</span><span>[[PLACEHOLDER: Best option]]</span></label>
+      <button type="submit" class="btn small">Check my answer</button>
+      <div class="feedback" hidden data-why="[[PLACEHOLDER: Why C is best.]]" aria-live="polite"></div>
+    </fieldset>
+  </form>
+</section>
+
+<!-- ===================== 4. Wrap-up ===================== -->
+<section class="slide" data-section="wrapup" data-title="Key takeaways">
+  <p class="sec-label"><span class="num" aria-hidden="true">4</span> Wrap-up</p>
+  <h2>[[PLACEHOLDER: e.g. "Three things to take with you"]]</h2>
+  <div class="grid g3 fold-row">
+    <div class="card fold"><span class="take-num" aria-hidden="true">1</span><h3>[[PLACEHOLDER: Takeaway 1, a short sentence]]</h3><p>[[PLACEHOLDER: What it means in practice.]]</p></div>
+    <div class="card fold"><span class="take-num" aria-hidden="true">2</span><h3>[[PLACEHOLDER: Takeaway 2]]</h3><p>[[PLACEHOLDER: What it means in practice.]]</p></div>
+    <div class="card fold"><span class="take-num" aria-hidden="true">3</span><h3>[[PLACEHOLDER: Takeaway 3]]</h3><p>[[PLACEHOLDER: What it means in practice.]]</p></div>
+  </div>
+  <p style="margin-top:20px"><em>[[PLACEHOLDER: Who to contact with questions, e.g. "Questions? Email ... or ask your supervisor."]]</em></p>
+</section>
+
+<!-- Finish slide: always the last slide. The script fills #finish-status with what's left, or the finish message. -->
+<section class="slide" data-section="wrapup" data-title="Finish">
+  <p class="sec-label"><span class="num" aria-hidden="true">4</span> Wrap-up</p>
+  <h2>[[PLACEHOLDER: e.g. "You're done!"]]</h2>
+  <div id="finish-status" class="result" hidden></div>
+  <div class="close-row" id="close-row" hidden>
+    <button type="button" class="btn" id="close-module">Close this window</button>
+    <p class="close-note" id="close-note" role="status" hidden>Your browser didn't let this page close the window. Close it with your browser's &times; button, then check that the module is marked Complete.</p>
+  </div>
+</section>
+
+<!-- SCORM milestones: one per section and one per section check (check-<section id>), reached from script only.
+     Keep IDs the same in every version of a module, or learners lose their progress. -->
+<div hidden>
+  <span data-jalon="welcome" data-trigger="click"></span>
+  <span data-jalon="s1" data-trigger="click"></span>
+  <span data-jalon="s2" data-trigger="click"></span>
+  <span data-jalon="practice" data-trigger="click"></span>
+  <span data-jalon="wrapup" data-trigger="click"></span>
+  <span data-jalon="check-s1" data-trigger="click"></span>
+  <span data-jalon="check-s2" data-trigger="click"></span>
+</div>
+</main>
+
+<div class="navbar" id="navbar" hidden>
+  <div class="navbar-inner">
+    <p class="counter" id="counter"></p>
+    <p class="nav-hint" id="nav-hint"></p>
+    <button type="button" class="btn ghost" id="prev">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      Previous
+    </button>
+    <button type="button" class="btn" id="next" aria-describedby="nav-hint">
+      Next
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+  <p class="sr-only" id="nav-status" aria-live="assertive"></p>
+</div>
+</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // DEV: set to true while testing, to skip through the module. Every slide opens from the menu, Next is never locked
+  // and animations jump to their end (as with reduced motion). A "Dev mode" badge shows in the top bar.
+  // Always set it back to false before packaging.
+  var DEV = false;
+  // Prefix for this module's browser settings (sound, tips, menu). Change it for each new module.
+  var MODULE_KEY = "uplift-sample-module";
+  if (DEV) {
+    document.documentElement.classList.add("dev");
+    document.getElementById("pct").insertAdjacentHTML("beforebegin", '<span class="dev-badge">Dev mode</span>');
+    var left = (document.body.innerHTML.match(/\[\[PLACEHOLDER/g) || []).length;
+    if (left) { console.warn(left + " [[PLACEHOLDER]] markers are still in this module."); }
+  }
+  // CHECK_TOTAL = questions in all section checks (the score is out of this number).
+  var CHECK_TOTAL = 4;
+  // Sections in order. Each id is a milestone ([data-jalon]) and the data-section of its slides.
+  // A section with a check uses the same id for its form.check data-check; the check's milestone is "check-<id>".
+  var SECTIONS = [
+    { id: "welcome", n: 0, name: "Welcome" },
+    { id: "s1", n: 1, name: "Section one" },
+    { id: "s2", n: 2, name: "Section two" },
+    { id: "practice", n: 3, name: "Practice" },
+    { id: "wrapup", n: 4, name: "Wrap-up" }
+  ];
+  var LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  function $(id) { return document.getElementById(id); }
+  var reduceMotion = DEV ? { matches: true } : window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  // ---------- Sound effects ----------
+  // sfx("click" | "correct" | "wrong") plays the hidden <audio id="sfx-..."> in the top bar. Off unless the learner
+  // turns it on in Settings. The on-screen feedback always says the same thing, so sound is never the only signal.
+  var SOUND_KEY = MODULE_KEY + "-sound", soundOn = false;
+  try { soundOn = localStorage.getItem(SOUND_KEY) === "on"; } catch (e) {}
+  function sfx(name) {
+    if (!soundOn) { return; }
+    try {
+      var a = $("sfx-" + name);
+      a.volume = name === "click" ? .35 : .5;
+      a.currentTime = 0;
+      var p = a.play();
+      if (p && p.catch) { p.catch(function () {}); } // autoplay rules or a missing file: stay silent
+    } catch (e) {}
+  }
+  (function () {
+    var btn = $("sound-toggle");
+    function show() { btn.setAttribute("aria-pressed", String(soundOn)); }
+    show();
+    btn.addEventListener("click", function () {
+      soundOn = !soundOn;
+      try { localStorage.setItem(SOUND_KEY, soundOn ? "on" : "off"); } catch (e) {}
+      show();
+      sfx("click");
+    });
+  })();
+
+  // ---------- Tip strip ----------
+  // Shows on the first slide only, unless the learner hides it or turns it on in Settings (remembered in this browser).
+  var TIP_KEY = MODULE_KEY + "-tip", tipSlide;
+  (function () {
+    var tip = $("tip"), root = document.documentElement, toggle = $("tips-toggle"), pref = null, at = 0;
+    try { pref = localStorage.getItem(TIP_KEY); } catch (e) {} // "shown", "hidden" or null (not chosen yet)
+    function fit() { root.style.setProperty("--tip-h", tip.hidden ? "0px" : tip.offsetHeight + "px"); }
+    function sync() {
+      var on = pref ? pref === "shown" : at === 0;
+      tip.hidden = !on;
+      toggle.setAttribute("aria-pressed", String(on));
+      fit();
+    }
+    function choose(on) {
+      pref = on ? "shown" : "hidden";
+      try { localStorage.setItem(TIP_KEY, pref); } catch (e) {}
+      sync();
+    }
+    tipSlide = function (i) { at = i; sync(); };
+    toggle.addEventListener("click", function () { choose(tip.hidden); sfx("click"); });
+    var links = tip.querySelectorAll(".tip-link");
+    Array.prototype.forEach.call(links, function (b) {
+      b.addEventListener("click", function () {
+        var open = b.getAttribute("aria-expanded") !== "true";
+        Array.prototype.forEach.call(links, function (o) {
+          var on = o === b && open;
+          o.setAttribute("aria-expanded", String(on));
+          $(o.getAttribute("aria-controls")).hidden = !on;
+        });
+        fit();
+      });
+    });
+    $("tip-hide").addEventListener("click", function () {
+      choose(false);
+      var main = $("main"); // the button is gone, so focus moves on to the slide
+      if (!main.hasAttribute("tabindex")) { main.setAttribute("tabindex", "-1"); }
+      main.focus();
+    });
+    if (window.ResizeObserver) { new ResizeObserver(fit).observe(tip); } else { window.addEventListener("resize", fit); }
+    sync();
+  })();
+
+  // ---------- Dropdowns (Resources, Settings) ----------
+  // Each top-bar button opens its panel and closes the other. Escape or a click outside closes it (Escape returns
+  // focus to the button).
+  (function () {
+    var btns = document.querySelectorAll(".drop-toggle");
+    function panelOf(b) { return $(b.getAttribute("aria-controls")); }
+    function open(b, on) { panelOf(b).hidden = !on; b.setAttribute("aria-expanded", String(on)); }
+    Array.prototype.forEach.call(btns, function (b) {
+      b.addEventListener("click", function () {
+        var on = panelOf(b).hidden;
+        Array.prototype.forEach.call(btns, function (o) { open(o, o === b && on); });
+      });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") { return; }
+      Array.prototype.forEach.call(btns, function (b) { if (!panelOf(b).hidden) { open(b, false); b.focus(); } });
+    });
+    document.addEventListener("click", function (e) {
+      Array.prototype.forEach.call(btns, function (b) { if (!panelOf(b).hidden && !b.parentNode.contains(e.target)) { open(b, false); } });
+    });
+  })();
+  // Clicks for picks and toggles. Answers get "correct" or "wrong" where they're checked instead.
+  document.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest(".persona-btn, .fold-btn")) { sfx("click"); }
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches(".opt input")) { sfx("click"); }
+  });
+
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var current = 0, furthest = 0, done = {}, tasksDone = {};
+  var checkPassed = {}, passedBefore = false, banked = 0;
+  function slideOf(el) { return slides.indexOf(el.closest(".slide")); }
+  function firstSlideOf(sectionId) {
+    for (var i = 0; i < slides.length; i++) { if (slides[i].getAttribute("data-section") === sectionId) { return i; } }
+    return -1;
+  }
+
+  // ---------- Progress indicator (mirrors the SCORM milestones) ----------
+  var seen = {};
+  function updateProgress() {
+    var local = Object.keys(seen).length / SECTIONS.length;
+    var lms = 0;
+    try { if (window.SCORM2004 && window.SCORM2004.progress) { lms = Number(window.SCORM2004.progress()) || 0; } } catch (e) {}
+    var pct = Math.round(Math.max(local, lms) * 100);
+    var label = $("pct");
+    if (label.textContent !== pct + "% complete") {
+      $("bar").style.width = pct + "%";
+      label.textContent = pct + "% complete";
+    }
+    SECTIONS.forEach(function (s) {
+      var sec = document.querySelector('.menu-sec[data-for="' + s.id + '"]');
+      if (sec && seen[s.id]) { sec.classList.add("done"); sec.querySelector(".status").textContent = ", viewed"; }
+    });
+    updateFinish();
+  }
+
+  function markSeen(id) { if (id && !seen[id]) { seen[id] = true; updateProgress(); } }
+  function reachSection(id) {
+    markSeen(id);
+    try { if (window.SCORM2004 && window.SCORM2004.reach) { window.SCORM2004.reach(id); } } catch (e) {}
+  }
+
+  // ---------- Finish slide ----------
+  // Tells the learner whether they're finished, and what's left if not. Close this window shows once finished.
+  function showClose(on) { $("close-row").hidden = !on; if (!on) { $("close-note").hidden = true; } }
+  function updateFinish() {
+    var box = $("finish-status");
+    var todo = SECTIONS.filter(function (s) { return !seen[s.id]; }).map(function (s) { return s.name; });
+    var check = firstOpenCheck();
+    if (check) { todo.push("the " + check.name + " check"); }
+    box.hidden = false;
+    if (todo.length) {
+      box.className = "result fail";
+      box.innerHTML = "<h3>Almost there</h3><p>To finish, you still need to complete: " + todo.join(", ") + ".</p>" +
+        (check ? '<p><button type="button" class="btn small" data-go="' + check.first + '">Go to the ' + check.name + " check</button></p>" : "");
+      showClose(false);
+    } else {
+      box.className = "result pass";
+      box.innerHTML = "<h3>You've finished this module</h3><p>Thank you.</p>" +
+        "<p>Please close this window, and check that the module is marked as Complete to receive credit.</p>";
+      showClose(true);
+    }
+  }
+  // Closing the window ends the LMS session: the SCORM runtime saves progress and terminates on pagehide. Browsers
+  // only let a page close a window that a script opened (as most LMS players do), so if it's still open a moment
+  // later, the note says to close it by hand.
+  $("close-module").addEventListener("click", function () {
+    try { window.top.close(); } catch (e) {}
+    try { window.close(); } catch (e) {}
+    setTimeout(function () { $("close-note").hidden = false; }, 500);
+  });
+
+  // ---------- Count-up numbers (optional) ----------
+  // Each .stat that is a whole number (with an optional %) counts up from 0 over 1.5 seconds each time its slide
+  // opens. Anything else (like a placeholder) is left alone. Screen readers get only the final number, and reduced
+  // motion shows it straight away.
+  var COUNT_MS = 1500, counters = [];
+  Array.prototype.forEach.call(document.querySelectorAll(".stat"), function (el) {
+    var text = el.textContent.trim(), m = /^(\d+)(%?)$/.exec(text);
+    if (!m) { return; }
+    el.innerHTML = '<span aria-hidden="true">' + text + '</span><span class="sr-only">' + text + "</span>";
+    counters.push({ el: el.firstChild, slide: el.closest(".slide"), end: +m[1], unit: m[2], frame: 0 });
+  });
+  function countUp(slide) {
+    counters.forEach(function (c) {
+      cancelAnimationFrame(c.frame);
+      if (c.slide !== slide) { return; }
+      if (reduceMotion.matches) { c.el.textContent = c.end + c.unit; return; }
+      var t0 = null;
+      c.el.textContent = "0" + c.unit;
+      function tick(t) {
+        if (t0 === null) { t0 = t; }
+        var p = Math.min((t - t0) / COUNT_MS, 1);
+        c.el.textContent = Math.round(c.end * (1 - Math.pow(1 - p, 3))) + c.unit;
+        if (p < 1) { c.frame = requestAnimationFrame(tick); }
+      }
+      c.frame = requestAnimationFrame(tick);
+    });
+  }
+
+  // ---------- Slide navigation ----------
+  var prevBtn = $("prev"), nextBtn = $("next"), hint = $("nav-hint"), navStatus = $("nav-status");
+
+  // Why Next is locked on slide i, or "" if it isn't. Slides before the furthest one reached are always open.
+  function blocker(i) {
+    if (DEV) { return ""; }
+    var s = slides[i], gate = s.getAttribute("data-gate");
+    if (gate === "check") { return checkBlocker(s); } // checked even on earlier slides, so a retry can't be skipped
+    if (i < furthest) { return ""; }
+    var why = gate && !done[i] ? gateText(gate) : "", left = todoText(i);
+    if (left && why) { return left + ", then " + why.charAt(0).toLowerCase() + why.slice(1); }
+    return left ? left + " to continue." : why;
+  }
+  // The hint for each data-gate. Add a line here when you add a new kind of gated activity.
+  function gateText(gate) {
+    if (gate === "sort") { return "Sort all four examples to continue."; }
+    if (gate === "practice") { return "Pick an answer and select Check my answer to continue."; }
+    return "";
+  }
+  // Where each gate's activity is, so a second locked-Next press can outline it.
+  var GATE_AREA = { sort: ".sort", practice: "form.practice:not([hidden])", check: "form.check" };
+
+  // What's left to do on slide i besides its data-gate: open each fold box and reveal. Boxes for roles that aren't
+  // showing don't count. Once nothing is left, the slide stays open.
+  var TODO = { open: "open each box marked +" };
+  function todo(i) {
+    var s = slides[i], left = [];
+    if (tasksDone[i]) { return left; }
+    Array.prototype.forEach.call(s.querySelectorAll(".fold:not(.seen), details.reveal:not(.seen)"), function (el) {
+      if (el.closest("[data-persona][hidden]")) { return; }
+      left.push({ el: el, kind: "open" });
+    });
+    if (!left.length) { tasksDone[i] = true; }
+    return left;
+  }
+  function todoText(i) {
+    var parts = [];
+    todo(i).forEach(function (t) { if (parts.indexOf(TODO[t.kind]) < 0) { parts.push(TODO[t.kind]); } });
+    if (!parts.length) { return ""; }
+    var text = parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : parts[0];
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  // Where the learner still needs to act on slide i: what's left to do, plus the gate's activity if it isn't done.
+  function actionAreas(i) {
+    var s = slides[i], gate = s.getAttribute("data-gate");
+    var areas = todo(i).map(function (t) { return t.el; }), area = null;
+    var gateOpen = gate === "check" ? !checkBlocker(s) : !gate || done[i];
+    if (!gateOpen && GATE_AREA[gate]) { area = s.querySelector(GATE_AREA[gate]); }
+    if (area && areas.indexOf(area) < 0) { areas.push(area); }
+    return areas;
+  }
+  // Selecting a locked Next: the first time makes the hint bold, after that outlines where to act as well.
+  var nudge = 0;
+
+  function updateNav() {
+    var last = current === slides.length - 1;
+    var why = last ? "You've reached the end of the module." : blocker(current);
+    prevBtn.disabled = current === 0;
+    nextBtn.hidden = last;
+    nextBtn.setAttribute("aria-disabled", why ? "true" : "false");
+    hint.textContent = why;
+    hint.classList.toggle("flash", !!why && nudge > 0);
+    Array.prototype.forEach.call(document.querySelectorAll(".needs-action"), function (el) { el.classList.remove("needs-action"); });
+    if (why && !last && nudge > 1) { actionAreas(current).forEach(function (el) { el.classList.add("needs-action"); }); }
+    $("counter").textContent = "Slide " + (current + 1) + " of " + slides.length;
+    updateMenu();
+  }
+
+  // Called whenever slide i is shown. A section counts as reached once its last slide is shown. A section with a
+  // check counts once the learner has passed it and moved on to the next section. The check itself counts once
+  // it's passed. (Also called for the first slide on load, so a one-slide Welcome section is reached too.)
+  function arrive(i) {
+    var sec = slides[i].getAttribute("data-section");
+    var after = slides[i + 1], before = slides[i - 1];
+    if ((!after || after.getAttribute("data-section") !== sec) && !checkFor(sec)) { reachSection(sec); }
+    var prev = before && before.getAttribute("data-section");
+    if (prev && prev !== sec && checkFor(prev) && checkPassed[prev]) { reachSection(prev); }
+  }
+
+  function canGo(i) {
+    if (i < 0 || i >= slides.length) { return false; }
+    return DEV || i <= furthest || (i === current + 1 && !blocker(current));
+  }
+
+  function goTo(i, focus) {
+    if (!canGo(i)) { return; }
+    slides[current].hidden = true;
+    current = i;
+    slides[i].hidden = false;
+    tipSlide(i);
+    if (i > furthest) { furthest = i; }
+    nudge = 0;
+    arrive(i);
+    if (focus) { $("resume-note").hidden = true; }
+    updateNav();
+    countUp(slides[i]);
+    window.scrollTo(0, 0);
+    if (focus) {
+      var h = slides[i].querySelector("h1, h2");
+      h.setAttribute("tabindex", "-1");
+      h.focus();
+    }
+  }
+
+  prevBtn.addEventListener("click", function () { goTo(current - 1, true); });
+  nextBtn.addEventListener("click", function () {
+    var why = blocker(current);
+    if (why) {
+      nudge++;
+      updateNav();
+      var first = document.querySelector(".needs-action");
+      if (first) { first.scrollIntoView({ block: "center", behavior: reduceMotion.matches ? "auto" : "smooth" }); }
+      navStatus.textContent = "";
+      setTimeout(function () { navStatus.textContent = why; }, 50);
+      return;
+    }
+    goTo(current + 1, true);
+  });
+
+  // ---------- Menu ----------
+  // Built from SECTIONS and each slide's data-title. Slides the learner hasn't reached are locked.
+  var menu = $("menu"), toggle = $("menu-toggle"), scrim = $("scrim");
+  var menuItems = [];
+  SECTIONS.forEach(function (s) {
+    var li = document.createElement("li");
+    li.className = "menu-sec";
+    li.setAttribute("data-for", s.id);
+    li.innerHTML = '<p class="menu-sec-title"><span class="num" aria-hidden="true">' + s.n + "</span> " + s.name +
+      '<span class="tick" aria-hidden="true">&#10003;</span><span class="sr-only status"></span></p><ol class="menu-slides"></ol>';
+    var ol = li.querySelector("ol");
+    slides.forEach(function (slide, idx) {
+      if (slide.getAttribute("data-section") !== s.id) { return; }
+      var item = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "menu-item";
+      b.setAttribute("data-go", idx);
+      b.innerHTML = '<span class="mi-title"></span><span class="mi-state"></span><span class="sr-only mi-sr"></span>';
+      b.querySelector(".mi-title").textContent = slide.getAttribute("data-title");
+      item.appendChild(b);
+      ol.appendChild(item);
+      menuItems[idx] = b;
+    });
+    $("menu-list").appendChild(li);
+  });
+
+  function updateMenu() {
+    menuItems.forEach(function (b, idx) {
+      var locked = !DEV && idx > furthest;
+      b.disabled = locked;
+      if (idx === current) { b.setAttribute("aria-current", "step"); } else { b.removeAttribute("aria-current"); }
+      b.querySelector(".mi-state").innerHTML = locked ? LOCK_SVG : "";
+      b.querySelector(".mi-sr").textContent = locked ? " (locked)" : "";
+    });
+    var cur = menuItems[current];
+    if (cur && (menu.offsetParent !== null || getComputedStyle(menu).position === "fixed")) {
+      if (cur.offsetTop < menu.scrollTop || cur.offsetTop + cur.offsetHeight > menu.scrollTop + menu.clientHeight) {
+        menu.scrollTop = cur.offsetTop - menu.clientHeight / 3;
+      }
+    }
+  }
+
+  // Small screens: the menu opens over the slide. Wider screens: it sits beside it and remembers open/closed.
+  var small = window.matchMedia("(max-width: 900px)");
+  var MENU_KEY = MODULE_KEY + "-menu";
+  function prefOpen() { try { return localStorage.getItem(MENU_KEY) !== "closed"; } catch (e) { return true; } }
+  function setMenu(open, save) {
+    document.body.setAttribute("data-menu", open ? "open" : "closed");
+    toggle.setAttribute("aria-expanded", String(open));
+    scrim.hidden = !(open && small.matches);
+    if (save && !small.matches) { try { localStorage.setItem(MENU_KEY, open ? "open" : "closed"); } catch (e) {} }
+    if (open) { updateMenu(); }
+  }
+  toggle.addEventListener("click", function () {
+    var open = document.body.getAttribute("data-menu") !== "open";
+    setMenu(open, true);
+    if (open && small.matches) { (menuItems[current] || $("menu-close")).focus(); }
+  });
+  $("menu-close").addEventListener("click", function () { setMenu(false, true); toggle.focus(); });
+  scrim.addEventListener("click", function () { setMenu(false, false); });
+  document.addEventListener("keydown", function (e) {
+    if ((e.key === "Escape" || e.key === "Esc") && small.matches && document.body.getAttribute("data-menu") === "open") {
+      setMenu(false, false);
+      toggle.focus();
+    }
+  });
+  function onResize() { setMenu(!small.matches && prefOpen(), false); }
+  if (small.addEventListener) { small.addEventListener("change", onResize); } else if (small.addListener) { small.addListener(onResize); }
+
+  // Any [data-go] button (menu items, "go to the check" links) jumps to that slide.
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest && e.target.closest("[data-go]");
+    if (!t || t.disabled) { return; }
+    var i = Number(t.getAttribute("data-go"));
+    if (!canGo(i)) { return; }
+    if (small.matches && t.classList.contains("menu-item")) { setMenu(false, false); }
+    goTo(i, true);
+  });
+
+  // ---------- Sort activity ----------
+  // Drag an example onto a box, or select it and then select a box (works with a keyboard and on touch screens).
+  // A wrong box sends the card back; Next unlocks once every card is in the right box. Works for each [data-sort].
+  Array.prototype.forEach.call(document.querySelectorAll("[data-sort]"), function (root) {
+    var slide = root.closest(".slide"), slideIdx = slides.indexOf(slide);
+    var cards = root.querySelectorAll(".sort-card"), bins = root.querySelectorAll(".sort-bin");
+    var status = root.querySelector(".sort-status"), count = slide.querySelector(".sort-count"), picked = null, drag = null;
+    function say(kind, title, text) {
+      status.hidden = false;
+      status.className = "feedback sort-status " + kind;
+      status.textContent = "";
+      if (title) { status.appendChild(document.createElement("strong")).textContent = title; }
+      status.appendChild(document.createTextNode(text));
+    }
+    function pick(card) {
+      picked = card;
+      Array.prototype.forEach.call(cards, function (c) { if (!c.disabled) { c.setAttribute("aria-pressed", String(c === card)); } });
+      root.classList.toggle("picking", !!card);
+    }
+    function drop(card, bin) {
+      if (card.getAttribute("data-answer") !== bin.getAttribute("data-bin")) {
+        card.classList.remove("wrong");
+        void card.offsetWidth; // restart the shake
+        card.classList.add("wrong");
+        sfx("wrong");
+        say("bad", "Not quite.", " Try another box.");
+        return;
+      }
+      pick(null);
+      sfx("correct");
+      card.classList.remove("wrong");
+      card.classList.add("placed");
+      card.removeAttribute("aria-pressed");
+      card.disabled = true;
+      bin.querySelector(".sort-placed").appendChild(card);
+      var left = root.querySelector(".sort-pool .sort-card");
+      if (left) {
+        if (count) { count.textContent = "Example " + (cards.length - root.querySelectorAll(".sort-pool .sort-card").length + 1) + " of " + cards.length; }
+        say("good", "Correct.", " " + card.getAttribute("data-why"));
+        left.focus();
+      } else {
+        say("good", "All sorted.", " " + card.getAttribute("data-why"));
+        if (count) { count.textContent = "All " + cards.length + " sorted"; }
+        var sortHint = root.querySelector(".sort-hint"); if (sortHint) { sortHint.hidden = true; }
+        var after = slide.querySelector(".sort-after"); if (after) { after.hidden = false; }
+        status.setAttribute("tabindex", "-1");
+        status.focus();
+        done[slideIdx] = true;
+        updateNav();
+      }
+    }
+    function binAt(x, y) {
+      return Array.prototype.filter.call(bins, function (b) {
+        var r = b.getBoundingClientRect();
+        return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+      })[0];
+    }
+    function showOver(bin) { Array.prototype.forEach.call(bins, function (b) { b.classList.toggle("over", b === bin); }); }
+    Array.prototype.forEach.call(cards, function (card) {
+      card.addEventListener("pointerdown", function (e) {
+        if (card.disabled || e.button > 0) { return; }
+        drag = { x: e.clientX, y: e.clientY, moved: false };
+        try { card.setPointerCapture(e.pointerId); } catch (err) {} // some browsers refuse capture; the drag still works
+      });
+      card.addEventListener("pointermove", function (e) {
+        if (!drag) { return; }
+        var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) { return; }
+        drag.moved = true;
+        card.classList.add("dragging");
+        card.style.transform = "translate(" + dx + "px, " + dy + "px)";
+        showOver(binAt(e.clientX, e.clientY));
+      });
+      function endDrag(e, dropIt) {
+        if (!drag) { return; }
+        var moved = drag.moved;
+        drag = null;
+        card.classList.remove("dragging");
+        card.style.transform = "";
+        showOver(null);
+        if (!moved) { return; } // a tap or click: the click handler selects the card
+        card.dataset.dragged = "1";
+        var bin = dropIt && binAt(e.clientX, e.clientY);
+        if (bin) { drop(card, bin); }
+      }
+      card.addEventListener("pointerup", function (e) { endDrag(e, true); });
+      card.addEventListener("pointercancel", function (e) { endDrag(e, false); });
+      card.addEventListener("click", function () {
+        if (card.dataset.dragged) { delete card.dataset.dragged; return; }
+        sfx("click");
+        pick(picked === card ? null : card);
+        if (picked) { say("", "", "Now select the box it belongs in."); }
+      });
+    });
+    Array.prototype.forEach.call(bins, function (bin) {
+      bin.querySelector(".sort-target").addEventListener("click", function () {
+        if (!picked) { say("", "", "Select an example first, then select a box."); return; }
+        drop(picked, bin);
+      });
+    });
+  });
+
+  // Every reveal counts as done once it has been opened (see todo).
+  Array.prototype.forEach.call(document.querySelectorAll("details.reveal"), function (d) {
+    d.addEventListener("toggle", function () { if (d.open) { d.classList.add("seen"); updateNav(); } });
+  });
+
+  // ---------- Fold boxes ----------
+  // A .fold box shows only what comes up to its heading (an icon, number or tag). The heading becomes a button,
+  // and everything after it is hidden until the box is opened. Heading = [data-fold-head], else the first h3, h4 or .tag.
+  Array.prototype.forEach.call(document.querySelectorAll(".fold"), function (box, i) {
+    var head = null;
+    ["[data-fold-head]", "h3", "h4", ".tag"].some(function (sel) { head = box.querySelector(":scope > " + sel); return head; });
+    if (!head) { return; }
+    var body = document.createElement("div");
+    body.className = "fold-body"; body.id = "fold-" + i; body.hidden = true;
+    while (head.nextSibling) { body.appendChild(head.nextSibling); }
+    box.appendChild(body);
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "fold-btn";
+    btn.setAttribute("aria-expanded", "false"); btn.setAttribute("aria-controls", body.id);
+    while (head.firstChild) { btn.appendChild(head.firstChild); }
+    head.appendChild(btn);
+    btn.addEventListener("click", function () {
+      var open = btn.getAttribute("aria-expanded") !== "true";
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      body.hidden = !open;
+      box.classList.toggle("open", open);
+      if (open) { box.classList.add("seen"); updateNav(); }
+    });
+  });
+
+  // ---------- Role picker ----------
+  // One role for the whole module: picking it on any slide sets it everywhere. Elements with data-persona (other
+  // than the buttons) show only for the chosen role.
+  var persona = "teacher";
+  function setPersona(p) {
+    if (p === persona) { return; }
+    persona = p;
+    Array.prototype.forEach.call(document.querySelectorAll(".persona-btn"), function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-persona") === p ? "true" : "false");
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-persona]:not(.persona-btn)"), function (el) {
+      el.hidden = el.getAttribute("data-persona") !== p;
+    });
+    updateNav();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".persona-btn"), function (b) {
+    b.addEventListener("click", function () { setPersona(b.getAttribute("data-persona")); });
+  });
+
+  // ---------- Shared: mark options after answering ----------
+  function markOptions(fieldset, answer, chosen) {
+    Array.prototype.forEach.call(fieldset.querySelectorAll(".opt"), function (opt) {
+      var input = opt.querySelector("input");
+      var old = opt.querySelector(".mark"); if (old) { old.parentNode.removeChild(old); }
+      opt.classList.remove("correct", "wrong");
+      var tag = null;
+      if (input.value === answer) { opt.classList.add("correct"); tag = "✓ Correct answer"; }
+      else if (input.value === chosen) { opt.classList.add("wrong"); tag = "✗ Your answer"; }
+      if (tag) { var s = document.createElement("span"); s.className = "mark"; s.textContent = tag; opt.appendChild(s); }
+    });
+  }
+  function clearOptions(fieldset) {
+    Array.prototype.forEach.call(fieldset.querySelectorAll(".opt"), function (opt) {
+      opt.classList.remove("correct", "wrong");
+      var old = opt.querySelector(".mark"); if (old) { old.parentNode.removeChild(old); }
+      var input = opt.querySelector("input"); input.checked = false; input.disabled = false;
+    });
+  }
+  function optionText(fieldset, letter) {
+    var input = fieldset.querySelector('input[value="' + letter + '"]');
+    return input ? input.parentNode.children[2].textContent : "";
+  }
+
+  // ---------- Practice (not scored) ----------
+  // Shows right or wrong, marks the best answer and explains why (data-why). Answering unlocks Next.
+  Array.prototype.forEach.call(document.querySelectorAll("form.practice"), function (form) {
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var best = form.getAttribute("data-answer");
+      var picked = form.querySelector("input:checked");
+      var fb = form.querySelector(".feedback");
+      fb.hidden = false;
+      if (!picked) { fb.className = "feedback bad"; fb.innerHTML = "<strong>Choose an answer first.</strong>"; return; }
+      var right = picked.value === best;
+      sfx(right ? "correct" : "wrong");
+      markOptions(form, best, picked.value);
+      Array.prototype.forEach.call(form.querySelectorAll(".opt .mark"), function (m) {
+        if (m.parentNode.classList.contains("correct")) { m.textContent = "✓ Best answer"; }
+      });
+      fb.className = "feedback " + (right ? "good" : "bad");
+      fb.innerHTML = "<strong>" + (right ? "That's right. " : "Not quite. ") + best + " is the best answer.</strong>";
+      fb.appendChild(document.createTextNode(fb.getAttribute("data-why")));
+      done[slideOf(form)] = true;
+      updateNav();
+    });
+  });
+
+  // ---------- Section checks ----------
+  // One question per slide. "Check my answer" marks the correct answer (no explanation). The last question shows the
+  // result: passed, or Try again (back to the first question, answers cleared). Next stays locked until passed.
+  var checks = [];
+  Array.prototype.forEach.call(document.querySelectorAll("form.check"), function (form) {
+    var id = form.getAttribute("data-check"), c = checks.filter(function (x) { return x.id === id; })[0];
+    if (!c) {
+      c = { id: id, forms: [], pass: Number(form.getAttribute("data-pass")), first: slideOf(form) };
+      c.name = SECTIONS.filter(function (s) { return s.id === id; })[0].name;
+      checks.push(c);
+    }
+    c.forms.push(form);
+  });
+  function checkOf(form) { return checks.filter(function (c) { return c.forms.indexOf(form) !== -1; })[0]; }
+  function checkFor(sectionId) { return (checks || []).filter(function (c) { return c.id === sectionId; })[0]; }
+  function firstOpenCheck() {
+    for (var i = 0; checks && i < checks.length; i++) { if (!checkPassed[checks[i].id]) { return checks[i]; } }
+    return null;
+  }
+
+  function checkBlocker(slide) {
+    var form = slide.querySelector("form.check"), c = checkOf(form);
+    if (checkPassed[c.id]) { return ""; }
+    if (!form.classList.contains("checked")) { return "Choose an answer and select Check my answer to continue."; }
+    if (form === c.forms[c.forms.length - 1]) { return "Pass this check to continue: " + c.pass + " of " + c.forms.length + " right."; }
+    return "";
+  }
+
+  function reportScore(raw) {
+    try {
+      if (window.SCORM2004 && window.SCORM2004.score) { window.SCORM2004.score(raw, 0, CHECK_TOTAL); }
+      else { window.dispatchEvent(new CustomEvent("scorm:score", { detail: { raw: raw, min: 0, max: CHECK_TOTAL } })); }
+    } catch (e) {}
+  }
+  // The package has no mastery score, so "passed" is set here once every check is passed. Never "failed".
+  function reportPassed() {
+    try {
+      var api = findApi();
+      if (api && !(window.SCORM2004 && window.SCORM2004.isPreview && window.SCORM2004.isPreview())) {
+        api.SetValue("cmi.success_status", "passed");
+        api.Commit("");
+      }
+    } catch (e) {}
+  }
+  function passCheck(c, right) {
+    if (checkPassed[c.id]) { return; }
+    checkPassed[c.id] = true;
+    try { if (window.SCORM2004 && window.SCORM2004.reach) { window.SCORM2004.reach("check-" + c.id); } } catch (e) {}
+    if (!passedBefore) {
+      banked += right;
+      reportScore(banked);
+      if (!firstOpenCheck()) { reportPassed(); }
+    }
+    updateProgress();
+  }
+
+  function showCheckResult(c) {
+    var box = c.forms[c.forms.length - 1].querySelector(".check-result");
+    var open = c.forms.filter(function (f) { return !f.classList.contains("checked"); });
+    box.hidden = false;
+    if (open.length) {
+      box.className = "result fail check-result";
+      box.innerHTML = "<p>Answer every question first. Still to answer: " + open.map(function (f) {
+        return '<button type="button" class="linklike" data-go="' + slideOf(f) + '">question ' + (c.forms.indexOf(f) + 1) + "</button>";
+      }).join(", ") + ".</p>";
+      return;
+    }
+    var right = c.forms.filter(function (f) { return f.getAttribute("data-right") === "true"; }).length;
+    var total = c.forms.length, ok = right >= c.pass, earlier = checkPassed[c.id] && !ok;
+    if (ok) { passCheck(c, right); }
+    box.className = "result " + (ok || earlier ? "pass" : "fail") + " check-result";
+    box.innerHTML = "<h3>" + c.name + " check: " + right + " of " + total + " right" + (ok ? ". You passed." : "") + "</h3>" +
+      (ok ? "<p>Nice work. Select Next to continue.</p>"
+        : earlier ? "<p>You already passed this check, so your earlier result is kept. Select Next to continue.</p>"
+        : "<p>You need " + c.pass + " of " + total + " to pass. Look at the correct answers, look back at the section using the menu if you like, then try again.</p>" +
+          '<p><button type="button" class="btn small" data-retry="' + c.id + '">Try again</button></p>');
+    box.focus();
+  }
+
+  checks.forEach(function (c) {
+    c.forms.forEach(function (form) {
+      form.addEventListener("change", function () { form.querySelector(".feedback").hidden = true; });
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        if (form.classList.contains("checked")) { return; }
+        var q = form.querySelector("fieldset.q"), answer = q.getAttribute("data-answer");
+        var picked = form.querySelector("input:checked"), fb = form.querySelector(".feedback");
+        fb.hidden = false;
+        if (!picked) { fb.className = "feedback bad"; fb.innerHTML = "<strong>Choose an answer first.</strong>"; return; }
+        // Only the correct answer is shown (no explanation). Screen readers hear the same thing in one line.
+        var right = picked.value === answer;
+        sfx(right ? "correct" : "wrong");
+        markOptions(q, answer, picked.value);
+        Array.prototype.forEach.call(form.querySelectorAll("input"), function (i) { i.disabled = true; });
+        form.querySelector("button[type=submit]").disabled = true;
+        form.setAttribute("data-right", String(right));
+        form.classList.add("checked");
+        // Question-level answer for the LMS. The runtime ignores it unless the module settings turn "interactions" on.
+        try {
+          if (window.SCORM2004 && window.SCORM2004.answer) {
+            window.SCORM2004.answer(picked.name, picked.value, answer, right, q.querySelector("legend").textContent);
+          }
+        } catch (e) {}
+        fb.className = "feedback sr-only";
+        var said = optionText(q, answer);
+        fb.textContent = right ? "Correct." : "Not quite. The correct answer is " + answer + ": " + said + (/[.!?”"]$/.test(said) ? "" : ".");
+        if (form === c.forms[c.forms.length - 1]) { showCheckResult(c); }
+        updateNav();
+      });
+    });
+  });
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-retry]");
+    if (!b) { return; }
+    var c = checks.filter(function (x) { return x.id === b.getAttribute("data-retry"); })[0];
+    c.forms.forEach(function (form) {
+      clearOptions(form);
+      form.classList.remove("checked");
+      form.removeAttribute("data-right");
+      form.querySelector("button[type=submit]").disabled = false;
+      var fb = form.querySelector(".feedback"); fb.hidden = true; fb.innerHTML = "";
+    });
+    var box = c.forms[c.forms.length - 1].querySelector(".check-result");
+    box.hidden = true; box.innerHTML = "";
+    goTo(c.first, true);
+  });
+
+  // ---------- Earlier visits: read the LMS record ----------
+  function findApi() {
+    var wins = [window];
+    try { if (window.opener) { wins.push(window.opener); } } catch (e) {}
+    for (var w = 0; w < wins.length; w++) {
+      var win = wins[w];
+      for (var depth = 0; win && depth < 10; depth++) {
+        try { if (win.API_1484_11) { return win.API_1484_11; } } catch (e) { break; }
+        if (!win.parent || win.parent === win) { break; }
+        win = win.parent;
+      }
+    }
+    return null;
+  }
+
+  // Resume at the first section not yet reached, or at a section's check if it was reached but its check
+  // wasn't passed. Earlier slides stay open in the menu.
+  function resume(reachedIds) {
+    // A section with a check is only ticked once its check is passed.
+    reachedIds.forEach(function (id) {
+      var c = checkFor(id);
+      if (SECTIONS.some(function (s) { return s.id === id; }) && (!c || checkPassed[c.id])) { seen[id] = true; }
+    });
+    var target = -1, label = "";
+    for (var i = 0; i < SECTIONS.length; i++) {
+      var s = SECTIONS[i], c = checkFor(s.id);
+      if (reachedIds.indexOf(s.id) === -1) { target = firstSlideOf(s.id); label = "Section " + s.n + ": " + s.name; break; }
+      if (c && !checkPassed[c.id]) { target = c.first; label = "the " + c.name + " check"; break; }
+    }
+    if (target === -1) {
+      // Finished on an earlier visit: start at the beginning with every slide open.
+      furthest = slides.length - 1;
+      updateNav();
+      return;
+    }
+    if (target > 0) {
+      furthest = target;
+      goTo(target, false);
+      var note = $("resume-note");
+      note.textContent = "Welcome back. You're picking up at " + label + ". Use the menu to review earlier slides.";
+      note.hidden = false;
+    }
+  }
+  window.addEventListener("load", function () {
+    var reachedIds = [];
+    try {
+      var api = findApi();
+      if (api) {
+        // Passed on an earlier visit: every check counts as passed, and the score already in the LMS is left alone.
+        passedBefore = api.GetValue("cmi.success_status") === "passed";
+        var data = JSON.parse(api.GetValue("cmi.suspend_data") || "{}");
+        if (data && Object.prototype.toString.call(data.reached) === "[object Array]") { reachedIds = data.reached; }
+        checks.forEach(function (c) { if (passedBefore || reachedIds.indexOf("check-" + c.id) !== -1) { checkPassed[c.id] = true; } });
+        // Checks passed on an earlier visit already added their answers to the score (out of CHECK_TOTAL).
+        if (!passedBefore && checks.some(function (c) { return checkPassed[c.id]; }) && api.GetValue("cmi.score.max") === String(CHECK_TOTAL)) {
+          banked = Number(api.GetValue("cmi.score.raw")) || 0;
+        }
+        if (passedBefore) {
+          checks.forEach(function (c) {
+            try { if (window.SCORM2004 && window.SCORM2004.reach) { window.SCORM2004.reach("check-" + c.id); } } catch (e) {}
+          });
+        }
+      }
+    } catch (e) {}
+    resume(reachedIds);
+    if (current === 0) { arrive(0); } // the runtime is ready by now, so the first slide's milestone is recorded
+    updateProgress();
+    // The packaging runtime may restore a saved scroll position; a slide always starts at the top.
+    setTimeout(function () { window.scrollTo(0, 0); }, 150);
+  });
+
+  // ---------- Start: one slide at a time ----------
+  slides.forEach(function (s, i) { s.hidden = i !== 0; });
+  menu.hidden = false;
+  toggle.hidden = false;
+  $("navbar").hidden = false;
+  onResize();
+  updateNav();
+  updateProgress();
+})();
+</script>
+</body>
+</html>

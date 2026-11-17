@@ -1,0 +1,5 @@
+# Keep launcher line endings right on every platform.
+*.cmd      text eol=crlf
+*.command  text eol=lf
+*.ps1      text eol=lf
+*.xsd      -text

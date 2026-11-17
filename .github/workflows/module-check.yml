@@ -1,0 +1,73 @@
+# Runs the module tools on every pull request, so anyone (on any computer) gets the same checks
+# and a built SCORM package without installing anything. Modules without an uplift-module
+# settings block (such as Foundations) are skipped.
+name: Module check
+
+on:
+  pull_request:
+    paths:
+      - "modules/**"
+      - "templates/**"
+      - "tools/**"
+      - ".github/workflows/module-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            shell: powershell
+            label: Windows PowerShell 5.1
+          - os: ubuntu-latest
+            shell: pwsh
+            label: PowerShell 7 on Linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check every framework module
+        run: ./tools/module.ps1 check --all
+
+  package:
+    name: Build packages
+    needs: check
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package every framework module
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'packages'
+          $found = $false
+          foreach ($m in Get-ChildItem -LiteralPath modules -Directory) {
+            $src = Join-Path $m.FullName 'sources'
+            if (-not (Test-Path -LiteralPath $src)) { continue }
+            $hasConfig = Get-ChildItem -LiteralPath $src -Directory | Where-Object {
+              $ix = Join-Path $_.FullName 'index.html'
+              (Test-Path -LiteralPath $ix) -and ((Get-Content -LiteralPath $ix -Raw -Encoding UTF8) -match 'id\s*=\s*["'']uplift-module["'']')
+            }
+            if (-not $hasConfig) { continue }
+            $found = $true
+            Write-Output "== $($m.Name)"
+            ./tools/module.ps1 package $m.Name -OutDir $out -Force
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not $found) { Write-Output 'No framework modules to package.' }
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorm-packages
+          path: ${{ runner.temp }}/packages/*.zip
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,114 @@
+# =====================================================================
+# ai-training — SCORM training modules
+# Git holds finished SCORM packages (*-scorm.zip), docs and
+# hand-written HTML module sources. Other source files (PowerPoints,
+# .story, .cptx, iSpring projects, media, exports) stay on the team's
+# shared drive, not in git.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Allowlist: inside any folder, ignore everything except
+# finished packages and README files.
+# ---------------------------------------------------------------------
+/*/**
+!/*/**/
+!**/README.md
+!**/*-scorm.zip
+# Hand-written HTML module sources (index.html + assets/), so changes
+# can be diffed and rebuilt. Decks and media stay ignored (see below).
+!/modules/*/sources/*/index.html
+!/modules/*/sources/*/assets/**
+# Module-building docs (Markdown only) and the module starter template.
+!/documentation/**/*.md
+!/templates/module-starter/**
+# Shared module core (SCORM runtime), build/check scripts and CI workflows.
+!/templates/core/**
+!/tools/**
+!/.github/workflows/**
+# Audio stays on the shared drive (narration, voice drafts), except the
+# short sfx-* sounds a module's index.html plays.
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.oga
+*.opus
+*.flac
+*.wma
+*.aif
+*.aiff
+!/modules/*/sources/*/assets/sfx-*.mp3
+!/templates/module-starter/assets/sfx-*.mp3
+# Video stays on the shared drive too, even inside a module's assets/
+# (for example the Foundations CEO welcome video, ceo-welcome.webm).
+# Copy it into assets/ locally before building the package.
+*.webm
+*.mkv
+*.m4v
+*.avi
+# Shared Claude Code skills for this repo
+!.claude/skills/**
+
+# Build scratch folders are never committed, even if they hold a zip
+dist/
+build/
+out/
+publish/
+published/
+output/
+
+# ---------------------------------------------------------------------
+# Learner / LMS data — never commit (FERPA)
+# Completion reports, gradebook exports, SCORM Cloud / LMS registration
+# and tracking data can contain student or staff PII.
+# ---------------------------------------------------------------------
+reports/
+lms-exports/
+learner-data/
+registrations/
+*.csv
+*.xlsx
+*.xls
+*_tracking.json
+*_registrations.json
+# Exception: made-up sample data only
+!**/sample-data/*.csv
+
+# ---------------------------------------------------------------------
+# Secrets / LMS & SCORM Cloud credentials
+# ---------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+scormcloud.config.json
+
+# ---------------------------------------------------------------------
+# Source files at the repo root (folders are covered above)
+# ---------------------------------------------------------------------
+*.ppt
+*.pptx
+*.pptm
+*.potx
+*.ppsx
+*.story
+*.cptx
+*.mp4
+*.mov
+*.bak
+*.tmp
+*~
+
+# ---------------------------------------------------------------------
+# OS & editor files
+# ---------------------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
